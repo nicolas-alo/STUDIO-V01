@@ -20,3 +20,42 @@ jobs:
         run: dotnet restore STUDIO-V01.sln
       - name: Build
         run: dotnet build STUDIO-V01.sln -c Release --no-restore
+
+      - name: Publish
+        run: dotnet publish src/Studio.UI/Studio.UI.csproj -c Release -r win-x64 --self-contained false -o publish
+
+      - name: Download FFmpeg
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package/tools | Out-Null
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ffmpeg.zip
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg-extracted -Force
+          $ffmpeg = Get-ChildItem -Path ffmpeg-extracted -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if (-not $ffmpeg) { throw "ffmpeg.exe não encontrado no pacote baixado." }
+          Copy-Item $ffmpeg.FullName package/tools/ffmpeg.exe -Force
+
+      - name: Assemble package
+        shell: pwsh
+        run: |
+          Copy-Item publish/* package/ -Recurse -Force
+          Copy-Item config/config.example.json package/config.local.json -Force
+          Set-Content -Path package/LEER_PRIMERO.txt -Value @"
+          STUDIO V01 - ETAPA 1
+
+          1. Abrí config.local.json.
+          2. Reemplazá USUARIO:CONTRASENA por las credenciales reales de las 4 cámaras.
+          3. No cambies las URLs de Grilla y Promo.
+          4. Ejecutá Studio.UI.exe.
+
+          El programa arranca automáticamente y cambia de fuente cada 20 segundos.
+          "@
+
+      - name: Zip package
+        shell: pwsh
+        run: Compress-Archive -Path package/* -DestinationPath STUDIO-V01-ETAPA1-win-x64.zip -Force
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: STUDIO-V01-ETAPA1-win-x64
+          path: STUDIO-V01-ETAPA1-win-x64.zip
