@@ -22,7 +22,7 @@ jobs:
         run: dotnet build STUDIO-V01.sln -c Release --no-restore
 
       - name: Publish
-        run: dotnet publish src/Studio.UI/Studio.UI.csproj -c Release -r win-x64 --self-contained false -o publish
+        run: dotnet publish src/Studio.UI/Studio.UI.csproj -c Release -r win-x64 --self-contained true -o publish
 
       - name: Download FFmpeg
         shell: pwsh
