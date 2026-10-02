@@ -139,7 +139,6 @@ public partial class MainWindow : Window
         psi.ArgumentList.Add("-hide_banner");
         psi.ArgumentList.Add("-loglevel"); psi.ArgumentList.Add("error");
         psi.ArgumentList.Add("-rtsp_transport"); psi.ArgumentList.Add("tcp");
-        psi.ArgumentList.Add("-rw_timeout"); psi.ArgumentList.Add("8000000");
         psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(url);
         psi.ArgumentList.Add("-an");
         psi.ArgumentList.Add("-vf");
