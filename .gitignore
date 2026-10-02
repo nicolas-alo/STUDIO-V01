@@ -1,0 +1,12 @@
+# Visual Studio / .NET
+.vs/
+**/bin/
+**/obj/
+*.user
+*.suo
+
+# Local configuration
+config/config.local.json
+
+# Local tools
+tools/ffmpeg.exe
