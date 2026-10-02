@@ -1,0 +1,11 @@
+{
+  "cycleSeconds": 20,
+  "sources": [
+    { "name": "Puente", "type": "RTSP", "url": "rtsp://USUARIO:CONTRASENA@192.168.250.101:554/cam/realmonitor?channel=1&subtype=0" },
+    { "name": "Puerto", "type": "RTSP", "url": "rtsp://USUARIO:CONTRASENA@192.168.250.100:554/cam/realmonitor?channel=1&subtype=0" },
+    { "name": "Esquina", "type": "RTSP", "url": "rtsp://USUARIO:CONTRASENA@192.168.33.12:554/cam/realmonitor?channel=1&subtype=0" },
+    { "name": "Edificio JJ", "type": "RTSP", "url": "rtsp://USUARIO:CONTRASENA@192.168.250.205:554/cam/realmonitor?channel=1&subtype=0" },
+    { "name": "Grilla", "type": "HTML", "url": "http://192.168.33.100/~radier/overlays/grilla_programacion.html" },
+    { "name": "Promo", "type": "HTML", "url": "http://192.168.33.100/~radier/overlays/promo.html" }
+  ]
+}
