@@ -31,11 +31,13 @@ public partial class MainWindow : Window
     private Process? _ffmpeg;
     private LocalConfig? _config;
     private int _index = -1;
+    private readonly string _logPath = Path.Combine(AppContext.BaseDirectory, "studio.log");
 
     public MainWindow()
     {
         InitializeComponent();
         Loaded += MainWindow_Loaded;
+        SizeChanged += MainWindow_SizeChanged;
         Closed += MainWindow_Closed;
         _cycleTimer.Tick += async (_, _) => await ShowNextAsync();
     }
@@ -44,6 +46,7 @@ public partial class MainWindow : Window
     {
         try
         {
+            Log("INICIO STUDIO V01 ETAPA 1");
             _config = await LoadConfigAsync();
             if (_config.Sources.Count != 6)
             {
@@ -57,6 +60,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            Log("ERROR DE INICIO: " + ex);
             StatusText.Text = "ERROR DE INICIO: " + ex.Message;
         }
     }
@@ -100,6 +104,7 @@ public partial class MainWindow : Window
         try
         {
             await HtmlPreview.EnsureCoreWebView2Async();
+            HtmlPreview.ZoomFactor = CalculateWebZoom();
             HtmlPreview.Source = new Uri(url);
         }
         catch (Exception ex)
@@ -145,6 +150,7 @@ public partial class MainWindow : Window
 
         try
         {
+            Log("INICIANDO FFMPEG: " + url);
             _ffmpeg = Process.Start(psi);
             if (_ffmpeg is null)
             {
@@ -153,9 +159,11 @@ public partial class MainWindow : Window
             }
 
             _ = Task.Run(() => ReadFramesAsync(_ffmpeg, token), token);
+            _ = Task.Run(() => ReadFfmpegErrorsAsync(_ffmpeg, token), token);
         }
         catch (Exception ex)
         {
+            Log("FFMPEG ERROR: " + ex);
             StatusText.Text = "FFMPEG ERROR: " + ex.Message;
         }
     }
@@ -202,6 +210,53 @@ public partial class MainWindow : Window
             }
         }
         catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Log("LECTURA VIDEO ERROR: " + ex);
+        }
+
+        if (!token.IsCancellationRequested)
+        {
+            await Dispatcher.InvokeAsync(() => StatusText.Text = "SIN VIDEO RTSP — revisar studio.log");
+        }
+    }
+
+    private async Task ReadFfmpegErrorsAsync(Process process, CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested && !process.HasExited)
+            {
+                var line = await process.StandardError.ReadLineAsync();
+                if (line is null) break;
+                if (!string.IsNullOrWhiteSpace(line)) Log("FFMPEG: " + line);
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!token.IsCancellationRequested) Log("STDERR ERROR: " + ex.Message);
+        }
+    }
+
+    private double CalculateWebZoom()
+    {
+        var w = Math.Max(320, ActualWidth - 16);
+        var h = Math.Max(240, ActualHeight - 48);
+        return Math.Min(w / OutputWidth, h / OutputHeight);
+    }
+
+    private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (HtmlPreview.CoreWebView2 is not null)
+            HtmlPreview.ZoomFactor = CalculateWebZoom();
+    }
+
+    private void Log(string message)
+    {
+        try
+        {
+            File.AppendAllText(_logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
+        }
         catch { }
     }
 
