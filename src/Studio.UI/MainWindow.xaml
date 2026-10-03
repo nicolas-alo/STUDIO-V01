@@ -55,6 +55,7 @@
                                     <ToggleButton Content="⏰" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="0|clock"/>
                                     <ToggleButton Content="🌤" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="0|climate"/>
                                     <ToggleButton Content="🐓" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="0|logo"/>
+                                    <ToggleButton Content="📰" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="0|news"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -66,6 +67,7 @@
                                     <ToggleButton Content="⏰" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="1|clock"/>
                                     <ToggleButton Content="🌤" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="1|climate"/>
                                     <ToggleButton Content="🐓" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="1|logo"/>
+                                    <ToggleButton Content="📰" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="1|news"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -77,6 +79,7 @@
                                     <ToggleButton Content="⏰" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="2|clock"/>
                                     <ToggleButton Content="🌤" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="2|climate"/>
                                     <ToggleButton Content="🐓" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="2|logo"/>
+                                    <ToggleButton Content="📰" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="2|news"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -88,6 +91,7 @@
                                     <ToggleButton Content="⏰" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="3|clock"/>
                                     <ToggleButton Content="🌤" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="3|climate"/>
                                     <ToggleButton Content="🐓" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="3|logo"/>
+                                    <ToggleButton Content="📰" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="3|news"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -99,6 +103,7 @@
                                     <ToggleButton Content="⏰" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="4|clock"/>
                                     <ToggleButton Content="🌤" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="4|climate"/>
                                     <ToggleButton Content="🐓" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="4|logo"/>
+                                    <ToggleButton Content="📰" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="4|news"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -136,7 +141,8 @@
                            Margin="24" Foreground="White" FontSize="28" FontWeight="Bold"
                            Background="#88000000" Padding="10,4" Visibility="Collapsed"/>
                 <Grid x:Name="ClimateHost" Visibility="Collapsed" IsHitTestVisible="False"/>
-                <Grid x:Name="LogoHost" Visibility="Collapsed" IsHitTestVisible="False"/>
+                <Grid x:Name="LogoHost" Visibility="Collapsed" IsHitTestVisible="False" HorizontalAlignment="Right" VerticalAlignment="Top" Width="320" Height="95" Margin="18,18,18,0" Panel.ZIndex="20"/>
+                <Grid x:Name="NewsHost" Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="19"/>
                 <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="14"
                         Padding="10,6" CornerRadius="5" Background="#CC111111">
                     <TextBlock x:Name="StatusText" Foreground="White" FontSize="14" Text="INICIANDO..."/>
