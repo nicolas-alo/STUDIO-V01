@@ -1,8 +1,9 @@
-using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
@@ -13,6 +14,8 @@ public partial class MainWindow : Window
 {
     private const int OutputWidth = 1920;
     private const int OutputHeight = 1080;
+    private const string ClimateUrl = "http://192.168.33.100/~radier/overlays/clima_extendido.html";
+    private const string LogoUrl = "http://192.168.33.100/~radier/overlays/moscasola.html";
 
     private sealed class LocalConfig
     {
@@ -29,18 +32,17 @@ public partial class MainWindow : Window
     }
 
     private readonly DispatcherTimer _cycleTimer = new();
+    private readonly DispatcherTimer _clockTimer = new();
     private CancellationTokenSource? _sourceCts;
+    private CancellationTokenSource? _quadCts;
     private Process? _ffmpeg;
     private readonly List<Process> _quadProcesses = [];
-    private readonly CancellationTokenSource _quadLifetime = new();
     private LocalConfig? _config;
     private int _index = -1;
+    private bool _manualSelection;
     private readonly bool[] _clockEnabled = new bool[5];
     private readonly bool[] _climateEnabled = new bool[5];
     private readonly bool[] _logoEnabled = new bool[5];
-    private readonly DispatcherTimer _clockTimer = new();
-    private const string ClimateUrl = "http://192.168.33.100/~radier/overlays/clima_extendido.html";
-    private const string LogoUrl = "http://192.168.33.100/~radier/overlays/moscasola.html";
     private readonly string _logPath = Path.Combine(AppContext.BaseDirectory, "studio.log");
 
     public MainWindow()
@@ -49,28 +51,37 @@ public partial class MainWindow : Window
         Loaded += MainWindow_Loaded;
         SizeChanged += MainWindow_SizeChanged;
         Closed += MainWindow_Closed;
-        _cycleTimer.Tick += async (_, _) => await ShowNextAsync();
+        _cycleTimer.Tick += async (_, _) =>
+        {
+            if (!_manualSelection)
+                await ShowNextAsync();
+        };
         _clockTimer.Interval = TimeSpan.FromSeconds(1);
         _clockTimer.Tick += (_, _) => ClockOverlay.Text = DateTime.Now.ToString("HH:mm:ss");
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        Log("INICIO STUDIO V01 ETAPA 2 RECONSTRUIDA");
+        StatusText.Text = "CARGANDO CONFIGURACIÓN...";
         try
         {
-            Log("INICIO STUDIO V01 ETAPA 1");
             _config = await LoadConfigAsync();
             if (_config.Sources.Count < 6)
             {
-                StatusText.Text = "CONFIGURACIÓN INVÁLIDA: faltan las 6 fuentes base.";
+                StatusText.Text = "CONFIGURACIÓN INVÁLIDA: se requieren 6 fuentes.";
+                Log(StatusText.Text);
                 return;
             }
 
             _cycleTimer.Interval = TimeSpan.FromSeconds(Math.Max(1, _config.CycleSeconds));
-            _cycleTimer.Start();
             _clockTimer.Start();
-            await InitializeAudioPlayerAsync();
+            _cycleTimer.Start();
+
             await ShowNextAsync();
+
+            // El reproductor M3U8 nunca debe impedir que abra la ventana.
+            _ = InitializeAudioPlayerSafeAsync();
         }
         catch (Exception ex)
         {
@@ -83,13 +94,10 @@ public partial class MainWindow : Window
     {
         var path = Path.Combine(AppContext.BaseDirectory, "config.local.json");
         if (!File.Exists(path))
-            throw new FileNotFoundException(
-                "Falta config.local.json junto al ejecutable. Copiá config.example.json y completalo.",
-                path);
+            throw new FileNotFoundException("Falta config.local.json junto al ejecutable.", path);
 
         await using var stream = File.OpenRead(path);
-        return await JsonSerializer.DeserializeAsync<LocalConfig>(
-            stream,
+        return await JsonSerializer.DeserializeAsync<LocalConfig>(stream,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
             ?? throw new InvalidDataException("config.local.json no es válido.");
     }
@@ -98,8 +106,24 @@ public partial class MainWindow : Window
     {
         if (_config is null) return;
 
-        var totalSources = _config.Sources.Count + 1; // +1 = fuente virtual 4 CÁMARAS
+        var totalSources = _config.Sources.Count + 1;
         _index = (_index + 1) % totalSources;
+        await ShowCurrentAsync();
+    }
+
+    private async Task SelectSourceAsync(int slot)
+    {
+        if (_config is null) return;
+        if (slot < 0 || slot > 4) return;
+
+        _manualSelection = true;
+        _index = slot;
+        await ShowCurrentAsync();
+    }
+
+    private async Task ShowCurrentAsync()
+    {
+        if (_config is null) return;
 
         await StopCurrentAsync();
         UpdateAirCard();
@@ -125,35 +149,47 @@ public partial class MainWindow : Window
             ApplyActiveOverlays(_index);
     }
 
+    private async void SourceCard_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender == CardPuente) await SelectSourceAsync(0);
+        else if (sender == CardPuerto) await SelectSourceAsync(1);
+        else if (sender == CardEsquina) await SelectSourceAsync(2);
+        else if (sender == CardEdificio) await SelectSourceAsync(3);
+        else if (sender == CardQuad) await SelectSourceAsync(4);
+    }
 
     private void UpdateAirCard()
     {
         var cards = new[] { CardPuente, CardPuerto, CardEsquina, CardEdificio, CardQuad };
         foreach (var card in cards)
         {
-            card.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(32,32,32));
-            card.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(48,48,48));
+            card.Background = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(32, 32, 32));
+            card.BorderBrush = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(48, 48, 48));
         }
 
-        var active = _index switch
-        {
-            0 => 0, 1 => 1, 2 => 2, 3 => 3,
-            var x when _config is not null && x == _config.Sources.Count => 4,
-            _ => -1
-        };
-
+        var active = _index >= 0 && _index <= 4 ? _index : -1;
         if (active >= 0)
         {
-            cards[active].Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(125,18,18));
-            cards[active].BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(230,45,45));
-            AirStatusText.Text = active switch
+            cards[active].Background = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(125, 18, 18));
+            cards[active].BorderBrush = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(230, 45, 45));
+            AirStatusText.Text = "AL AIRE: " + (active switch
             {
-                0 => "AL AIRE: PUENTE", 1 => "AL AIRE: PUERTO", 2 => "AL AIRE: ESQUINA",
-                3 => "AL AIRE: EDIFICIO JJ", 4 => "AL AIRE: 4 CÁMARAS", _ => "AL AIRE: —"
-            };
+                0 => "PUENTE",
+                1 => "PUERTO",
+                2 => "ESQUINA",
+                3 => "EDIFICIO JJ",
+                4 => "4 CÁMARAS",
+                _ => "—"
+            });
         }
         else
-            AirStatusText.Text = _index == 4 ? "AL AIRE: GRILLA" : _index == 5 ? "AL AIRE: PROMO" : "AL AIRE: —";
+        {
+            AirStatusText.Text = "AL AIRE: " + (_index == 5 ? "GRILLA" : _index == 6 ? "PROMO" : "—");
+        }
     }
 
     private void OverlayToggle_Click(object sender, RoutedEventArgs e)
@@ -174,13 +210,8 @@ public partial class MainWindow : Window
             _ = ApplyActiveOverlaysAsync(slot);
     }
 
-    private int GetActiveOverlaySlot()
-    {
-        if (_config is null) return -1;
-        if (_index >= 0 && _index < 4) return _index;
-        if (_index == _config.Sources.Count) return 4;
-        return -1;
-    }
+    private int GetActiveOverlaySlot() =>
+        _index >= 0 && _index <= 4 ? _index : -1;
 
     private void HideAllOverlays()
     {
@@ -210,27 +241,34 @@ public partial class MainWindow : Window
         }
     }
 
-    private static async Task ShowTransparentWebViewAsync(Microsoft.Web.WebView2.Wpf.WebView2 view, string url)
+    private static async Task ShowTransparentWebViewAsync(WebView2 view, string url)
     {
         await view.EnsureCoreWebView2Async();
         view.DefaultBackgroundColor = System.Drawing.Color.Transparent;
         view.CoreWebView2.Navigate(url);
     }
 
-    private async Task InitializeAudioPlayerAsync()
+    private async Task InitializeAudioPlayerSafeAsync()
     {
-        await AudioPlayer.EnsureCoreWebView2Async();
-        AudioPlayer.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255,11,11,11);
+        try
+        {
+            await AudioPlayer.EnsureCoreWebView2Async();
+            AudioPlayer.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 11, 11, 11);
 
-        var configured = _config?.M3u8Url ?? "";
-        var encoded = System.Net.WebUtility.HtmlEncode(configured);
-        var html = @"<!doctype html><html><body style='margin:0;background:#0b0b0b;color:#fff;font-family:Arial;overflow:hidden'>
+            var configured = _config?.M3u8Url?.Trim() ?? "";
+            var jsonUrl = JsonSerializer.Serialize(configured);
+            var html = @"<!doctype html><html><body style='margin:0;background:#0b0b0b;color:#fff;font-family:Arial;overflow:hidden'>
 <div style='padding:4px'><audio id='a' controls style='width:100%'></audio><div id='s' style='font-size:11px;color:#aaa'>M3U8 no configurado</div></div>
 <script src='https://cdn.jsdelivr.net/npm/hls.js@latest'></script><script>
-const url='__M3U8__'; const a=document.getElementById('a'); const s=document.getElementById('s');
+const url=__M3U8__; const a=document.getElementById('a'); const s=document.getElementById('s');
 if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.mpegurl')){a.src=url;} else if(window.Hls&&Hls.isSupported()){let h=new Hls();h.loadSource(url);h.attachMedia(a);}}
 </script></body></html>";
-        AudioPlayer.CoreWebView2.NavigateToString(html.Replace("__M3U8__", encoded));
+            AudioPlayer.CoreWebView2.NavigateToString(html.Replace("__M3U8__", jsonUrl));
+        }
+        catch (Exception ex)
+        {
+            Log("M3U8/WebView2 ERROR: " + ex);
+        }
     }
 
     private async Task ShowHtmlAsync(string url)
@@ -248,6 +286,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         catch (Exception ex)
         {
             StatusText.Text = "HTML ERROR: " + ex.Message;
+            Log("HTML ERROR: " + ex);
         }
     }
 
@@ -257,7 +296,10 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         PreviewImage.Visibility = Visibility.Collapsed;
         QuadPreview.Visibility = Visibility.Visible;
 
-        var sources = _config?.Sources.Where(s => s.Type.Equals("RTSP", StringComparison.OrdinalIgnoreCase)).Take(4).ToList();
+        var sources = _config?.Sources
+            .Where(s => s.Type.Equals("RTSP", StringComparison.OrdinalIgnoreCase))
+            .Take(4).ToList();
+
         if (sources is null || sources.Count < 4)
         {
             StatusText.Text = "FALTAN CÁMARAS RTSP";
@@ -271,8 +313,11 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             image.Visibility = Visibility.Collapsed;
         }
 
-        _quadProcesses.Clear();
-        var token = _quadLifetime.Token;
+        _quadCts?.Cancel();
+        _quadCts?.Dispose();
+        _quadCts = new CancellationTokenSource();
+        var token = _quadCts.Token;
+
         var tasks = sources.Select((source, i) => ReadQuadCameraAsync(source, images[i], i, token)).ToArray();
         await Task.WhenAll(tasks);
 
@@ -304,10 +349,9 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
         try
         {
-            Log($"4CAM[{slot + 1}] INICIANDO: {source.Url}");
             using var process = Process.Start(psi);
             if (process is null) return;
-            _quadProcesses.Add(process);
+            lock (_quadProcesses) _quadProcesses.Add(process);
 
             _ = Task.Run(async () =>
             {
@@ -342,7 +386,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
                 var frame = new byte[frameSize];
                 Buffer.BlockCopy(buffer, 0, frame, 0, frameSize);
-                var bitmap = BitmapSource.Create(width, height, 96, 96, System.Windows.Media.PixelFormats.Bgr24, null, frame, width * bpp);
+                var bitmap = BitmapSource.Create(width, height, 96, 96,
+                    System.Windows.Media.PixelFormats.Bgr24, null, frame, width * bpp);
                 bitmap.Freeze();
 
                 await Dispatcher.InvokeAsync(() =>
@@ -359,10 +404,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            Log($"4CAM[{slot + 1}] ERROR: {ex.Message}");
-        }
+        catch (Exception ex) { Log($"4CAM[{slot + 1}] ERROR: {ex}"); }
     }
 
     private async Task ShowRtspAsync(string url)
@@ -374,13 +416,12 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         var ffmpegPath = FindFfmpeg();
         if (ffmpegPath is null)
         {
-            StatusText.Text = "FFMPEG NO ENCONTRADO: colocá ffmpeg.exe en tools.";
+            StatusText.Text = "FFMPEG NO ENCONTRADO";
             return;
         }
 
         _sourceCts = new CancellationTokenSource();
         var token = _sourceCts.Token;
-
         var psi = new ProcessStartInfo(ffmpegPath)
         {
             UseShellExecute = false,
@@ -394,8 +435,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         psi.ArgumentList.Add("-rtsp_transport"); psi.ArgumentList.Add("tcp");
         psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(url);
         psi.ArgumentList.Add("-an");
-        psi.ArgumentList.Add("-vf");
-        psi.ArgumentList.Add("scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30000/1001");
+        psi.ArgumentList.Add("-vf"); psi.ArgumentList.Add("scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(oh-ih)*0+((ow-iw)/2):(oh-ih)/2,fps=30000/1001");
         psi.ArgumentList.Add("-pix_fmt"); psi.ArgumentList.Add("bgr24");
         psi.ArgumentList.Add("-f"); psi.ArgumentList.Add("rawvideo");
         psi.ArgumentList.Add("pipe:1");
@@ -404,11 +444,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         {
             Log("INICIANDO FFMPEG: " + url);
             _ffmpeg = Process.Start(psi);
-            if (_ffmpeg is null)
-            {
-                StatusText.Text = "NO SE PUDO INICIAR FFMPEG.";
-                return;
-            }
+            if (_ffmpeg is null) { StatusText.Text = "NO SE PUDO INICIAR FFMPEG."; return; }
 
             _ = Task.Run(() => ReadFramesAsync(_ffmpeg, token), token);
             _ = Task.Run(() => ReadFfmpegErrorsAsync(_ffmpeg, token), token);
@@ -422,55 +458,41 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private async Task ReadFramesAsync(Process process, CancellationToken token)
     {
-        const int bytesPerPixel = 3;
-        var frameSize = OutputWidth * OutputHeight * bytesPerPixel;
+        const int bpp = 3;
+        var frameSize = OutputWidth * OutputHeight * bpp;
         var buffer = new byte[frameSize];
 
         try
         {
             var stream = process.StandardOutput.BaseStream;
-
             while (!token.IsCancellationRequested && !process.HasExited)
             {
                 var read = 0;
                 while (read < frameSize && !token.IsCancellationRequested)
                 {
-                    var count = await stream.ReadAsync(
-                        buffer.AsMemory(read, frameSize - read), token);
-
+                    var count = await stream.ReadAsync(buffer.AsMemory(read, frameSize - read), token);
                     if (count == 0) return;
                     read += count;
                 }
-
                 if (read != frameSize) return;
 
                 var frame = new byte[frameSize];
                 Buffer.BlockCopy(buffer, 0, frame, 0, frameSize);
+                var bitmap = BitmapSource.Create(OutputWidth, OutputHeight, 96, 96,
+                    System.Windows.Media.PixelFormats.Bgr24, null, frame, OutputWidth * bpp);
+                bitmap.Freeze();
 
                 await Dispatcher.InvokeAsync(() =>
                 {
-                    if (token.IsCancellationRequested) return;
-
-                    var bitmap = BitmapSource.Create(
-                        OutputWidth, OutputHeight, 96, 96,
-                        System.Windows.Media.PixelFormats.Bgr24,
-                        null, frame, OutputWidth * bytesPerPixel);
-
-                    bitmap.Freeze();
-                    PreviewImage.Source = bitmap;
+                    if (!token.IsCancellationRequested) PreviewImage.Source = bitmap;
                 });
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            Log("LECTURA VIDEO ERROR: " + ex);
-        }
+        catch (Exception ex) { Log("LECTURA VIDEO ERROR: " + ex); }
 
         if (!token.IsCancellationRequested)
-        {
             await Dispatcher.InvokeAsync(() => StatusText.Text = "SIN VIDEO RTSP — revisar studio.log");
-        }
     }
 
     private async Task ReadFfmpegErrorsAsync(Process process, CancellationToken token)
@@ -492,8 +514,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private double CalculateWebZoom()
     {
-        var w = Math.Max(320, ActualWidth - 16);
-        var h = Math.Max(240, ActualHeight - 48);
+        var w = Math.Max(320, ActualWidth - 330);
+        var h = Math.Max(240, ActualHeight - 30);
         return Math.Min(w / OutputWidth, h / OutputHeight);
     }
 
@@ -505,10 +527,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private void Log(string message)
     {
-        try
-        {
-            File.AppendAllText(_logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
-        }
+        try { File.AppendAllText(_logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}"); }
         catch { }
     }
 
@@ -520,11 +539,9 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe"),
             Path.Combine(Environment.CurrentDirectory, "tools", "ffmpeg.exe")
         };
-
         foreach (var candidate in candidates)
             if (File.Exists(candidate)) return candidate;
-
-        return "ffmpeg";
+        return null;
     }
 
     private async Task StopCurrentAsync()
@@ -533,12 +550,19 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         _sourceCts?.Dispose();
         _sourceCts = null;
 
-        foreach (var process in _quadProcesses.ToList())
+        _quadCts?.Cancel();
+        _quadCts?.Dispose();
+        _quadCts = null;
+
+        List<Process> processes;
+        lock (_quadProcesses) processes = _quadProcesses.ToList();
+        foreach (var process in processes)
         {
             try { if (!process.HasExited) process.Kill(true); } catch { }
             try { process.Dispose(); } catch { }
         }
-        _quadProcesses.Clear();
+        lock (_quadProcesses) _quadProcesses.Clear();
+
         foreach (var image in new[] { QuadImage0, QuadImage1, QuadImage2, QuadImage3 })
         {
             image.Source = null;
@@ -549,7 +573,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         {
             try { if (!_ffmpeg.HasExited) _ffmpeg.Kill(true); } catch { }
             try { await _ffmpeg.WaitForExitAsync(); } catch { }
-            _ffmpeg.Dispose();
+            try { _ffmpeg.Dispose(); } catch { }
             _ffmpeg = null;
         }
     }
@@ -559,6 +583,5 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         _cycleTimer.Stop();
         _clockTimer.Stop();
         await StopCurrentAsync();
-        _quadLifetime.Cancel();
     }
 }
