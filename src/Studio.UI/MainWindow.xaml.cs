@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     private const int OutputHeight = 1080;
     private const string ClimateUrl = "http://192.168.33.100/~radier/overlays/clima_extendido.html";
     private const string LogoUrl = "http://192.168.33.100/~radier/overlays/moscasola.html";
+    private const string NewsUrl = "http://192.168.33.100/~radier/overlays/noticias.html";
 
     private sealed class LocalConfig
     {
@@ -43,11 +44,13 @@ public partial class MainWindow : Window
     private readonly bool[] _clockEnabled = new bool[5];
     private readonly bool[] _climateEnabled = new bool[5];
     private readonly bool[] _logoEnabled = new bool[5];
+    private readonly bool[] _newsEnabled = new bool[5];
     private readonly string _logPath = Path.Combine(AppContext.BaseDirectory, "studio.log");
     private WebView2? _audioPlayer;
     private WebView2? _htmlPreview;
     private WebView2? _climateOverlay;
     private WebView2? _logoOverlay;
+    private WebView2? _newsOverlay;
 
     public MainWindow()
     {
@@ -92,6 +95,8 @@ public partial class MainWindow : Window
             _clockTimer.Start();
             _cycleTimer.Start();
 
+            // Cargar overlays una sola vez; al cambiar de cámara solo se muestran/ocultan.
+            _ = InitializeOverlayWebViewsSafeAsync();
             await ShowNextAsync();
 
             // El reproductor M3U8 nunca debe impedir que abra la ventana.
@@ -218,6 +223,7 @@ public partial class MainWindow : Window
             case "clock": _clockEnabled[slot] = enabled; break;
             case "climate": _climateEnabled[slot] = enabled; break;
             case "logo": _logoEnabled[slot] = enabled; break;
+            case "news": _newsEnabled[slot] = enabled; break;
         }
 
         if (GetActiveOverlaySlot() == slot)
@@ -232,6 +238,7 @@ public partial class MainWindow : Window
         ClockOverlay.Visibility = Visibility.Collapsed;
         ClimateHost.Visibility = Visibility.Collapsed;
         LogoHost.Visibility = Visibility.Collapsed;
+        NewsHost.Visibility = Visibility.Collapsed;
     }
 
     private void ApplyActiveOverlays(int slot) => _ = ApplyActiveOverlaysAsync(slot);
@@ -242,23 +249,53 @@ public partial class MainWindow : Window
         ClockOverlay.Text = DateTime.Now.ToString("HH:mm:ss");
         if (_clockEnabled[slot]) ClockOverlay.Visibility = Visibility.Visible;
 
-        if (_climateEnabled[slot])
+        // Los WebView2 quedan cargados: no se vuelve a navegar al cambiar de cámara.
+        if (_climateEnabled[slot] && _climateOverlay is not null)
+            ClimateHost.Visibility = Visibility.Visible;
+
+        if (_logoEnabled[slot] && _logoOverlay is not null)
+            LogoHost.Visibility = Visibility.Visible;
+
+        if (_newsEnabled[slot] && _newsOverlay is not null)
+            NewsHost.Visibility = Visibility.Visible;
+
+        await Task.CompletedTask;
+    }
+
+    private async Task InitializeOverlayWebViewsSafeAsync()
+    {
+        try
         {
-            if (_climateOverlay is not null)
-            {
-                await ShowTransparentWebViewAsync(_climateOverlay, ClimateUrl);
-                ClimateHost.Visibility = Visibility.Visible;
-            }
+            await InitializeOverlayWebViewAsync(_climateOverlay, ClimateUrl);
+            await InitializeOverlayWebViewAsync(_logoOverlay, LogoUrl);
+            await InitializeOverlayWebViewAsync(_newsOverlay, NewsUrl);
+        }
+        catch (Exception ex)
+        {
+            Log("OVERLAYS ERROR: " + ex);
         }
 
-        if (_logoEnabled[slot])
-        {
-            if (_logoOverlay is not null)
-            {
-                await ShowTransparentWebViewAsync(_logoOverlay, LogoUrl);
-                LogoHost.Visibility = Visibility.Visible;
-            }
-        }
+        var slot = GetActiveOverlaySlot();
+        if (slot >= 0)
+            await ApplyActiveOverlaysAsync(slot);
+    }
+
+    private async Task InitializeOverlayWebViewAsync(WebView2? view, string url)
+    {
+        if (view is null) return;
+
+        await view.EnsureCoreWebView2Async();
+        view.DefaultBackgroundColor = System.Drawing.Color.Transparent;
+
+        await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(@"
+            (() => {
+                const style = document.createElement('style');
+                style.textContent = 'html,body{background:transparent!important;background-color:transparent!important;margin:0!important;}';
+                document.documentElement.appendChild(style);
+            })();
+        ");
+
+        view.CoreWebView2.Navigate(url);
     }
 
     private void CreateWebViews()
@@ -283,13 +320,11 @@ public partial class MainWindow : Window
             _logoOverlay = new WebView2 { IsHitTestVisible = false };
             LogoHost.Children.Add(_logoOverlay);
         }
-    }
-
-    private static async Task ShowTransparentWebViewAsync(WebView2 view, string url)
-    {
-        await view.EnsureCoreWebView2Async();
-        view.DefaultBackgroundColor = System.Drawing.Color.Transparent;
-        view.CoreWebView2.Navigate(url);
+        if (_newsOverlay is null)
+        {
+            _newsOverlay = new WebView2 { IsHitTestVisible = false };
+            NewsHost.Children.Add(_newsOverlay);
+        }
     }
 
     private async Task InitializeAudioPlayerSafeAsync()
@@ -326,6 +361,14 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         {
             if (_htmlPreview is null) return;
             await _htmlPreview.EnsureCoreWebView2Async();
+            _htmlPreview.DefaultBackgroundColor = System.Drawing.Color.Transparent;
+            await _htmlPreview.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(@"
+                (() => {
+                    const style = document.createElement('style');
+                    style.textContent = 'html,body{background:transparent!important;background-color:transparent!important;margin:0!important;}';
+                    document.documentElement.appendChild(style);
+                })();
+            ");
             _htmlPreview.ZoomFactor = CalculateWebZoom();
             _htmlPreview.Source = new Uri(url);
         }
