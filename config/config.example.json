@@ -1,5 +1,6 @@
 {
   "cycleSeconds": 20,
+  "m3u8Url": "",
   "sources": [
     { "name": "Puente", "type": "RTSP", "url": "rtsp://USUARIO:CONTRASENA@192.168.250.101:554/cam/realmonitor?channel=1&subtype=0" },
     { "name": "Puerto", "type": "RTSP", "url": "rtsp://USUARIO:CONTRASENA@192.168.250.100:554/cam/realmonitor?channel=1&subtype=0" },
