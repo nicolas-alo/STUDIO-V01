@@ -320,7 +320,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     {
         PreviewImage.Visibility = Visibility.Collapsed;
         QuadPreview.Visibility = Visibility.Collapsed;
-        HtmlPreview.Visibility = Visibility.Visible;
+        HtmlHost.Visibility = Visibility.Visible;
 
         try
         {
@@ -455,7 +455,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private async Task ShowRtspAsync(string url)
     {
-        HtmlPreview.Visibility = Visibility.Collapsed;
+        HtmlHost.Visibility = Visibility.Collapsed;
         QuadPreview.Visibility = Visibility.Collapsed;
         PreviewImage.Visibility = Visibility.Visible;
 
