@@ -11,6 +11,14 @@
         WindowStartupLocation="CenterScreen">
     <Grid Background="#080808">
         <Image x:Name="PreviewImage" Stretch="Uniform" Visibility="Collapsed" />
+        <Grid x:Name="QuadPreview" Visibility="Collapsed" Background="#080808">
+            <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Image x:Name="QuadImage0" Grid.Row="0" Grid.Column="0" Stretch="Uniform" />
+            <Image x:Name="QuadImage1" Grid.Row="0" Grid.Column="1" Stretch="Uniform" />
+            <Image x:Name="QuadImage2" Grid.Row="1" Grid.Column="0" Stretch="Uniform" />
+            <Image x:Name="QuadImage3" Grid.Row="1" Grid.Column="1" Stretch="Uniform" />
+        </Grid>
         <wv2:WebView2 x:Name="HtmlPreview" Visibility="Collapsed" />
         <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="18"
                 Padding="12,8" CornerRadius="6" Background="#CC111111">
