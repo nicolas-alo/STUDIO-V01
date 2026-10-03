@@ -6,17 +6,25 @@
         Width="1500" Height="900" MinWidth="1200" MinHeight="700"
         Background="#080808" WindowStartupLocation="CenterScreen">
     <Grid Background="#080808" Margin="10">
-        <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="300"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
 
         <Border Grid.Column="0" Background="#121212" CornerRadius="8" Padding="10" Margin="0,0,10,0">
             <Grid>
-                <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="190"/></Grid.RowDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="190"/>
+                </Grid.RowDefinitions>
+
                 <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
                     <StackPanel>
                         <TextBlock Text="FUENTES" Foreground="White" FontSize="18" FontWeight="Bold" Margin="4,2,4,10"/>
 
-                        <Border x:Name="CardPuente" Style="{StaticResource SourceCardStyle}">
-                            <StackPanel><TextBlock Text="PUENTE" Style="{StaticResource SourceNameStyle}"/>
+                        <Border x:Name="CardPuente" Style="{StaticResource SourceCardStyle}" MouseLeftButtonUp="SourceCard_Click">
+                            <StackPanel>
+                                <TextBlock Text="PUENTE" Style="{StaticResource SourceNameStyle}"/>
                                 <StackPanel Orientation="Horizontal">
                                     <ToggleButton Content="⏰" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="0|clock"/>
                                     <ToggleButton Content="🌤" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="0|climate"/>
@@ -24,8 +32,10 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
-                        <Border x:Name="CardPuerto" Style="{StaticResource SourceCardStyle}">
-                            <StackPanel><TextBlock Text="PUERTO" Style="{StaticResource SourceNameStyle}"/>
+
+                        <Border x:Name="CardPuerto" Style="{StaticResource SourceCardStyle}" MouseLeftButtonUp="SourceCard_Click">
+                            <StackPanel>
+                                <TextBlock Text="PUERTO" Style="{StaticResource SourceNameStyle}"/>
                                 <StackPanel Orientation="Horizontal">
                                     <ToggleButton Content="⏰" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="1|clock"/>
                                     <ToggleButton Content="🌤" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="1|climate"/>
@@ -33,8 +43,10 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
-                        <Border x:Name="CardEsquina" Style="{StaticResource SourceCardStyle}">
-                            <StackPanel><TextBlock Text="ESQUINA" Style="{StaticResource SourceNameStyle}"/>
+
+                        <Border x:Name="CardEsquina" Style="{StaticResource SourceCardStyle}" MouseLeftButtonUp="SourceCard_Click">
+                            <StackPanel>
+                                <TextBlock Text="ESQUINA" Style="{StaticResource SourceNameStyle}"/>
                                 <StackPanel Orientation="Horizontal">
                                     <ToggleButton Content="⏰" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="2|clock"/>
                                     <ToggleButton Content="🌤" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="2|climate"/>
@@ -42,8 +54,10 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
-                        <Border x:Name="CardEdificio" Style="{StaticResource SourceCardStyle}">
-                            <StackPanel><TextBlock Text="EDIFICIO JJ" Style="{StaticResource SourceNameStyle}"/>
+
+                        <Border x:Name="CardEdificio" Style="{StaticResource SourceCardStyle}" MouseLeftButtonUp="SourceCard_Click">
+                            <StackPanel>
+                                <TextBlock Text="EDIFICIO JJ" Style="{StaticResource SourceNameStyle}"/>
                                 <StackPanel Orientation="Horizontal">
                                     <ToggleButton Content="⏰" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="3|clock"/>
                                     <ToggleButton Content="🌤" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="3|climate"/>
@@ -51,8 +65,10 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
-                        <Border x:Name="CardQuad" Style="{StaticResource SourceCardStyle}">
-                            <StackPanel><TextBlock Text="4 CÁMARAS" Style="{StaticResource SourceNameStyle}"/>
+
+                        <Border x:Name="CardQuad" Style="{StaticResource SourceCardStyle}" MouseLeftButtonUp="SourceCard_Click">
+                            <StackPanel>
+                                <TextBlock Text="4 CÁMARAS" Style="{StaticResource SourceNameStyle}"/>
                                 <StackPanel Orientation="Horizontal">
                                     <ToggleButton Content="⏰" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="4|clock"/>
                                     <ToggleButton Content="🌤" Style="{StaticResource OverlayToggleStyle}" Click="OverlayToggle_Click" Tag="4|climate"/>
@@ -60,13 +76,17 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
+
                         <TextBlock x:Name="AirStatusText" Text="AL AIRE: —" Foreground="#AAAAAA" FontSize="13" Margin="5,10,5,4"/>
                     </StackPanel>
                 </ScrollViewer>
 
                 <Border Grid.Row="1" Background="#0B0B0B" CornerRadius="7" Padding="8" Margin="0,10,0,0">
                     <Grid>
-                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
                         <TextBlock Text="🎵 M3U8" Foreground="White" FontSize="16" FontWeight="Bold" Margin="3,0,0,7"/>
                         <wv2:WebView2 x:Name="AudioPlayer" Grid.Row="1"/>
                     </Grid>
@@ -101,18 +121,27 @@
 
     <Window.Resources>
         <Style x:Key="SourceCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="#202020"/><Setter Property="CornerRadius" Value="6"/>
-            <Setter Property="Padding" Value="9"/><Setter Property="Margin" Value="0,0,0,8"/>
-            <Setter Property="BorderBrush" Value="#303030"/><Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Background" Value="#202020"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="9"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="BorderBrush" Value="#303030"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
         </Style>
         <Style x:Key="SourceNameStyle" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="White"/><Setter Property="FontSize" Value="16"/>
-            <Setter Property="FontWeight" Value="Bold"/><Setter Property="Margin" Value="2,0,0,7"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Margin" Value="2,0,0,7"/>
         </Style>
         <Style x:Key="OverlayToggleStyle" TargetType="ToggleButton">
-            <Setter Property="Width" Value="55"/><Setter Property="Height" Value="36"/>
-            <Setter Property="Margin" Value="0,0,7,0"/><Setter Property="FontSize" Value="18"/>
-            <Setter Property="Background" Value="#2A2A2A"/><Setter Property="Foreground" Value="White"/>
+            <Setter Property="Width" Value="55"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Margin" Value="0,0,7,0"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="Background" Value="#2A2A2A"/>
+            <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderBrush" Value="#444444"/>
         </Style>
     </Window.Resources>
