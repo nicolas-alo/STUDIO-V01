@@ -29,6 +29,8 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _cycleTimer = new();
     private CancellationTokenSource? _sourceCts;
     private Process? _ffmpeg;
+    private readonly List<Process> _quadProcesses = [];
+    private readonly CancellationTokenSource _quadLifetime = new();
     private LocalConfig? _config;
     private int _index = -1;
     private readonly string _logPath = Path.Combine(AppContext.BaseDirectory, "studio.log");
@@ -48,9 +50,9 @@ public partial class MainWindow : Window
         {
             Log("INICIO STUDIO V01 ETAPA 1");
             _config = await LoadConfigAsync();
-            if (_config.Sources.Count != 6)
+            if (_config.Sources.Count < 6)
             {
-                StatusText.Text = "CONFIGURACIÓN INVÁLIDA: deben existir 6 fuentes.";
+                StatusText.Text = "CONFIGURACIÓN INVÁLIDA: faltan las 6 fuentes base.";
                 return;
             }
 
@@ -84,10 +86,19 @@ public partial class MainWindow : Window
     {
         if (_config is null) return;
 
-        _index = (_index + 1) % _config.Sources.Count;
-        var source = _config.Sources[_index];
+        var totalSources = _config.Sources.Count + 1; // +1 = fuente virtual 4 CÁMARAS
+        _index = (_index + 1) % totalSources;
 
         await StopCurrentAsync();
+
+        if (_index == _config.Sources.Count)
+        {
+            StatusText.Text = "4 CÁMARAS • 1920×1080 • 29.97 FPS";
+            await ShowQuadAsync();
+            return;
+        }
+
+        var source = _config.Sources[_index];
         StatusText.Text = source.Name + " • " + source.Type.ToUpperInvariant() + " • 1920×1080 • 29.97 FPS";
 
         if (source.Type.Equals("HTML", StringComparison.OrdinalIgnoreCase))
@@ -99,6 +110,7 @@ public partial class MainWindow : Window
     private async Task ShowHtmlAsync(string url)
     {
         PreviewImage.Visibility = Visibility.Collapsed;
+        QuadPreview.Visibility = Visibility.Collapsed;
         HtmlPreview.Visibility = Visibility.Visible;
 
         try
@@ -113,9 +125,124 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task ShowQuadAsync()
+    {
+        HtmlPreview.Visibility = Visibility.Collapsed;
+        PreviewImage.Visibility = Visibility.Collapsed;
+        QuadPreview.Visibility = Visibility.Visible;
+
+        var sources = _config?.Sources.Where(s => s.Type.Equals("RTSP", StringComparison.OrdinalIgnoreCase)).Take(4).ToList();
+        if (sources is null || sources.Count < 4)
+        {
+            StatusText.Text = "FALTAN CÁMARAS RTSP";
+            return;
+        }
+
+        var images = new[] { QuadImage0, QuadImage1, QuadImage2, QuadImage3 };
+        foreach (var image in images)
+        {
+            image.Source = null;
+            image.Visibility = Visibility.Collapsed;
+        }
+
+        _quadProcesses.Clear();
+        var token = _quadLifetime.Token;
+        var tasks = sources.Select((source, i) => ReadQuadCameraAsync(source, images[i], i, token)).ToArray();
+        await Task.WhenAll(tasks);
+
+        var active = images.Count(i => i.Visibility == Visibility.Visible);
+        StatusText.Text = $"4 CÁMARAS • {active} ACTIVAS • 1920×1080 • 29.97 FPS";
+    }
+
+    private async Task ReadQuadCameraAsync(Source source, System.Windows.Controls.Image target, int slot, CancellationToken token)
+    {
+        var ffmpegPath = FindFfmpeg();
+        if (ffmpegPath is null) return;
+
+        var psi = new ProcessStartInfo(ffmpegPath)
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        psi.ArgumentList.Add("-hide_banner");
+        psi.ArgumentList.Add("-loglevel"); psi.ArgumentList.Add("error");
+        psi.ArgumentList.Add("-rtsp_transport"); psi.ArgumentList.Add("tcp");
+        psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(source.Url);
+        psi.ArgumentList.Add("-an");
+        psi.ArgumentList.Add("-vf"); psi.ArgumentList.Add("scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2,fps=30000/1001");
+        psi.ArgumentList.Add("-pix_fmt"); psi.ArgumentList.Add("bgr24");
+        psi.ArgumentList.Add("-f"); psi.ArgumentList.Add("rawvideo");
+        psi.ArgumentList.Add("pipe:1");
+
+        try
+        {
+            Log($"4CAM[{slot + 1}] INICIANDO: {source.Url}");
+            using var process = Process.Start(psi);
+            if (process is null) return;
+            _quadProcesses.Add(process);
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    while (!token.IsCancellationRequested)
+                    {
+                        var line = await process.StandardError.ReadLineAsync(token);
+                        if (line is null) break;
+                        if (!string.IsNullOrWhiteSpace(line)) Log($"4CAM[{slot + 1}] FFMPEG: {line}");
+                    }
+                }
+                catch { }
+            }, token);
+
+            const int width = 960, height = 540, bpp = 3;
+            var frameSize = width * height * bpp;
+            var buffer = new byte[frameSize];
+            var stream = process.StandardOutput.BaseStream;
+            var firstFrame = true;
+
+            while (!token.IsCancellationRequested && !process.HasExited)
+            {
+                var read = 0;
+                while (read < frameSize && !token.IsCancellationRequested)
+                {
+                    var count = await stream.ReadAsync(buffer.AsMemory(read, frameSize - read), token);
+                    if (count == 0) return;
+                    read += count;
+                }
+                if (read != frameSize) return;
+
+                var frame = new byte[frameSize];
+                Buffer.BlockCopy(buffer, 0, frame, 0, frameSize);
+                var bitmap = BitmapSource.Create(width, height, 96, 96, System.Windows.Media.PixelFormats.Bgr24, null, frame, width * bpp);
+                bitmap.Freeze();
+
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (token.IsCancellationRequested) return;
+                    target.Source = bitmap;
+                    target.Visibility = Visibility.Visible;
+                    if (firstFrame)
+                    {
+                        firstFrame = false;
+                        StatusText.Text = "4 CÁMARAS • RECIBIENDO SEÑAL...";
+                    }
+                });
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Log($"4CAM[{slot + 1}] ERROR: {ex.Message}");
+        }
+    }
+
     private async Task ShowRtspAsync(string url)
     {
         HtmlPreview.Visibility = Visibility.Collapsed;
+        QuadPreview.Visibility = Visibility.Collapsed;
         PreviewImage.Visibility = Visibility.Visible;
 
         var ffmpegPath = FindFfmpeg();
@@ -280,6 +407,18 @@ public partial class MainWindow : Window
         _sourceCts?.Dispose();
         _sourceCts = null;
 
+        foreach (var process in _quadProcesses.ToList())
+        {
+            try { if (!process.HasExited) process.Kill(true); } catch { }
+            try { process.Dispose(); } catch { }
+        }
+        _quadProcesses.Clear();
+        foreach (var image in new[] { QuadImage0, QuadImage1, QuadImage2, QuadImage3 })
+        {
+            image.Source = null;
+            image.Visibility = Visibility.Collapsed;
+        }
+
         if (_ffmpeg is not null)
         {
             try { if (!_ffmpeg.HasExited) _ffmpeg.Kill(true); } catch { }
@@ -293,5 +432,6 @@ public partial class MainWindow : Window
     {
         _cycleTimer.Stop();
         await StopCurrentAsync();
+        _quadLifetime.Cancel();
     }
 }
