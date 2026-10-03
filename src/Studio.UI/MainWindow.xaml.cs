@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Media.Imaging;
+using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
 
 namespace Studio.UI;
@@ -16,6 +17,7 @@ public partial class MainWindow : Window
     private sealed class LocalConfig
     {
         public int CycleSeconds { get; set; } = 20;
+        public string M3u8Url { get; set; } = "";
         public List<Source> Sources { get; set; } = [];
     }
 
@@ -33,6 +35,12 @@ public partial class MainWindow : Window
     private readonly CancellationTokenSource _quadLifetime = new();
     private LocalConfig? _config;
     private int _index = -1;
+    private readonly bool[] _clockEnabled = new bool[5];
+    private readonly bool[] _climateEnabled = new bool[5];
+    private readonly bool[] _logoEnabled = new bool[5];
+    private readonly DispatcherTimer _clockTimer = new();
+    private const string ClimateUrl = "http://192.168.33.100/~radier/overlays/clima_extendido.html";
+    private const string LogoUrl = "http://192.168.33.100/~radier/overlays/moscasola.html";
     private readonly string _logPath = Path.Combine(AppContext.BaseDirectory, "studio.log");
 
     public MainWindow()
@@ -42,6 +50,8 @@ public partial class MainWindow : Window
         SizeChanged += MainWindow_SizeChanged;
         Closed += MainWindow_Closed;
         _cycleTimer.Tick += async (_, _) => await ShowNextAsync();
+        _clockTimer.Interval = TimeSpan.FromSeconds(1);
+        _clockTimer.Tick += (_, _) => ClockOverlay.Text = DateTime.Now.ToString("HH:mm:ss");
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -58,6 +68,8 @@ public partial class MainWindow : Window
 
             _cycleTimer.Interval = TimeSpan.FromSeconds(Math.Max(1, _config.CycleSeconds));
             _cycleTimer.Start();
+            _clockTimer.Start();
+            await InitializeAudioPlayerAsync();
             await ShowNextAsync();
         }
         catch (Exception ex)
@@ -90,11 +102,14 @@ public partial class MainWindow : Window
         _index = (_index + 1) % totalSources;
 
         await StopCurrentAsync();
+        UpdateAirCard();
+        HideAllOverlays();
 
         if (_index == _config.Sources.Count)
         {
             StatusText.Text = "4 CÁMARAS • 1920×1080 • 29.97 FPS";
             await ShowQuadAsync();
+            ApplyActiveOverlays(4);
             return;
         }
 
@@ -105,6 +120,117 @@ public partial class MainWindow : Window
             await ShowHtmlAsync(source.Url);
         else
             await ShowRtspAsync(source.Url);
+
+        if (_index >= 0 && _index < 4)
+            ApplyActiveOverlays(_index);
+    }
+
+
+    private void UpdateAirCard()
+    {
+        var cards = new[] { CardPuente, CardPuerto, CardEsquina, CardEdificio, CardQuad };
+        foreach (var card in cards)
+        {
+            card.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(32,32,32));
+            card.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(48,48,48));
+        }
+
+        var active = _index switch
+        {
+            0 => 0, 1 => 1, 2 => 2, 3 => 3,
+            var x when _config is not null && x == _config.Sources.Count => 4,
+            _ => -1
+        };
+
+        if (active >= 0)
+        {
+            cards[active].Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(125,18,18));
+            cards[active].BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(230,45,45));
+            AirStatusText.Text = active switch
+            {
+                0 => "AL AIRE: PUENTE", 1 => "AL AIRE: PUERTO", 2 => "AL AIRE: ESQUINA",
+                3 => "AL AIRE: EDIFICIO JJ", 4 => "AL AIRE: 4 CÁMARAS", _ => "AL AIRE: —"
+            };
+        }
+        else
+            AirStatusText.Text = _index == 4 ? "AL AIRE: GRILLA" : _index == 5 ? "AL AIRE: PROMO" : "AL AIRE: —";
+    }
+
+    private void OverlayToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleButton button || button.Tag is not string tag) return;
+        var parts = tag.Split('|');
+        if (parts.Length != 2 || !int.TryParse(parts[0], out var slot) || slot < 0 || slot > 4) return;
+
+        var enabled = button.IsChecked == true;
+        switch (parts[1])
+        {
+            case "clock": _clockEnabled[slot] = enabled; break;
+            case "climate": _climateEnabled[slot] = enabled; break;
+            case "logo": _logoEnabled[slot] = enabled; break;
+        }
+
+        if (GetActiveOverlaySlot() == slot)
+            _ = ApplyActiveOverlaysAsync(slot);
+    }
+
+    private int GetActiveOverlaySlot()
+    {
+        if (_config is null) return -1;
+        if (_index >= 0 && _index < 4) return _index;
+        if (_index == _config.Sources.Count) return 4;
+        return -1;
+    }
+
+    private void HideAllOverlays()
+    {
+        ClockOverlay.Visibility = Visibility.Collapsed;
+        ClimateOverlay.Visibility = Visibility.Collapsed;
+        LogoOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void ApplyActiveOverlays(int slot) => _ = ApplyActiveOverlaysAsync(slot);
+
+    private async Task ApplyActiveOverlaysAsync(int slot)
+    {
+        HideAllOverlays();
+        ClockOverlay.Text = DateTime.Now.ToString("HH:mm:ss");
+        if (_clockEnabled[slot]) ClockOverlay.Visibility = Visibility.Visible;
+
+        if (_climateEnabled[slot])
+        {
+            await ShowTransparentWebViewAsync(ClimateOverlay, ClimateUrl);
+            ClimateOverlay.Visibility = Visibility.Visible;
+        }
+
+        if (_logoEnabled[slot])
+        {
+            await ShowTransparentWebViewAsync(LogoOverlay, LogoUrl);
+            LogoOverlay.Visibility = Visibility.Visible;
+        }
+    }
+
+    private static async Task ShowTransparentWebViewAsync(Microsoft.Web.WebView2.Wpf.WebView2 view, string url)
+    {
+        await view.EnsureCoreWebView2Async();
+        view.CoreWebView2Controller!.DefaultBackgroundColor = System.Drawing.Color.Transparent;
+        view.CoreWebView2.Navigate(url);
+    }
+
+    private async Task InitializeAudioPlayerAsync()
+    {
+        await AudioPlayer.EnsureCoreWebView2Async();
+        AudioPlayer.CoreWebView2Controller!.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255,11,11,11);
+
+        var configured = _config?.M3u8Url ?? "";
+        var encoded = System.Net.WebUtility.HtmlEncode(configured);
+        var html = @"<!doctype html><html><body style='margin:0;background:#0b0b0b;color:#fff;font-family:Arial;overflow:hidden'>
+<div style='padding:4px'><audio id='a' controls style='width:100%'></audio><div id='s' style='font-size:11px;color:#aaa'>M3U8 no configurado</div></div>
+<script src='https://cdn.jsdelivr.net/npm/hls.js@latest'></script><script>
+const url='__M3U8__'; const a=document.getElementById('a'); const s=document.getElementById('s');
+if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.mpegurl')){a.src=url;} else if(window.Hls&&Hls.isSupported()){let h=new Hls();h.loadSource(url);h.attachMedia(a);}}
+</script></body></html>";
+        AudioPlayer.CoreWebView2.NavigateToString(html.Replace("__M3U8__", encoded));
     }
 
     private async Task ShowHtmlAsync(string url)
@@ -431,6 +557,7 @@ public partial class MainWindow : Window
     private async void MainWindow_Closed(object? sender, EventArgs e)
     {
         _cycleTimer.Stop();
+        _clockTimer.Stop();
         await StopCurrentAsync();
         _quadLifetime.Cancel();
     }
