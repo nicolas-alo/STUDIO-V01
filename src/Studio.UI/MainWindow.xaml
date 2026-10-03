@@ -4,6 +4,33 @@
                 Title="STUDIO V01 — ETAPA 2"
         Width="1500" Height="900" MinWidth="1200" MinHeight="700"
         Background="#080808" WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <Style x:Key="SourceCardStyle" TargetType="Border">
+            <Setter Property="Background" Value="#202020"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="9"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="BorderBrush" Value="#303030"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style x:Key="SourceNameStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Margin" Value="2,0,0,7"/>
+        </Style>
+        <Style x:Key="OverlayToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="55"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Margin" Value="0,0,7,0"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="Background" Value="#2A2A2A"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#444444"/>
+        </Style>
+    </Window.Resources>
+
     <Grid Background="#080808" Margin="10">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="300"/>
@@ -118,30 +145,5 @@
         </Border>
     </Grid>
 
-    <Window.Resources>
-        <Style x:Key="SourceCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="#202020"/>
-            <Setter Property="CornerRadius" Value="6"/>
-            <Setter Property="Padding" Value="9"/>
-            <Setter Property="Margin" Value="0,0,0,8"/>
-            <Setter Property="BorderBrush" Value="#303030"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Cursor" Value="Hand"/>
-        </Style>
-        <Style x:Key="SourceNameStyle" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="FontSize" Value="16"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Margin" Value="2,0,0,7"/>
-        </Style>
-        <Style x:Key="OverlayToggleStyle" TargetType="ToggleButton">
-            <Setter Property="Width" Value="55"/>
-            <Setter Property="Height" Value="36"/>
-            <Setter Property="Margin" Value="0,0,7,0"/>
-            <Setter Property="FontSize" Value="18"/>
-            <Setter Property="Background" Value="#2A2A2A"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#444444"/>
-        </Style>
-    </Window.Resources>
+
 </Window>
