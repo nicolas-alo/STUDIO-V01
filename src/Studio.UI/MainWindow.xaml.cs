@@ -213,14 +213,14 @@ public partial class MainWindow : Window
     private static async Task ShowTransparentWebViewAsync(Microsoft.Web.WebView2.Wpf.WebView2 view, string url)
     {
         await view.EnsureCoreWebView2Async();
-        view.CoreWebView2Controller!.DefaultBackgroundColor = System.Drawing.Color.Transparent;
+        view.DefaultBackgroundColor = System.Drawing.Color.Transparent;
         view.CoreWebView2.Navigate(url);
     }
 
     private async Task InitializeAudioPlayerAsync()
     {
         await AudioPlayer.EnsureCoreWebView2Async();
-        AudioPlayer.CoreWebView2Controller!.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255,11,11,11);
+        AudioPlayer.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255,11,11,11);
 
         var configured = _config?.M3u8Url ?? "";
         var encoded = System.Net.WebUtility.HtmlEncode(configured);
