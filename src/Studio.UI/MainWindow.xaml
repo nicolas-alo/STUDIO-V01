@@ -127,22 +127,30 @@
 
         <Border Grid.Column="1" Background="#000000" CornerRadius="8" BorderBrush="#262626" BorderThickness="1">
             <Grid ClipToBounds="True">
-                <Image x:Name="PreviewImage" Stretch="Uniform" Visibility="Collapsed"/>
-                <Grid x:Name="QuadPreview" Visibility="Collapsed" Background="#080808">
-                    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <Image x:Name="QuadImage0" Grid.Row="0" Grid.Column="0" Stretch="Uniform"/>
-                    <Image x:Name="QuadImage1" Grid.Row="0" Grid.Column="1" Stretch="Uniform"/>
-                    <Image x:Name="QuadImage2" Grid.Row="1" Grid.Column="0" Stretch="Uniform"/>
-                    <Image x:Name="QuadImage3" Grid.Row="1" Grid.Column="1" Stretch="Uniform"/>
-                </Grid>
-                <Grid x:Name="HtmlHost" Visibility="Collapsed"/>
-                <TextBlock x:Name="ClockOverlay" Text="00:00:00" HorizontalAlignment="Right" VerticalAlignment="Top"
-                           Margin="24" Foreground="White" FontSize="28" FontWeight="Bold"
-                           Background="#88000000" Padding="10,4" Visibility="Collapsed"/>
-                <Grid x:Name="ClimateHost" Visibility="Collapsed" IsHitTestVisible="False"/>
-                <Grid x:Name="LogoHost" Visibility="Collapsed" IsHitTestVisible="False" HorizontalAlignment="Right" VerticalAlignment="Top" Width="320" Height="95" Margin="18,18,18,0" Panel.ZIndex="20"/>
-                <Grid x:Name="NewsHost" Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="19"/>
+                <!-- Todo el contenido de programa vive dentro de un lienzo 16:9 real.
+                     Los overlays quedan dentro de la señal 1920x1080 y nunca en las bandas del preview. -->
+                <Viewbox Stretch="Uniform">
+                    <Grid Width="1920" Height="1080" Background="#000000" ClipToBounds="True">
+                        <Image x:Name="PreviewImage" Stretch="Fill" Visibility="Collapsed"/>
+                        <Grid x:Name="QuadPreview" Visibility="Collapsed" Background="#080808">
+                            <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Image x:Name="QuadImage0" Grid.Row="0" Grid.Column="0" Stretch="Fill"/>
+                            <Image x:Name="QuadImage1" Grid.Row="0" Grid.Column="1" Stretch="Fill"/>
+                            <Image x:Name="QuadImage2" Grid.Row="1" Grid.Column="0" Stretch="Fill"/>
+                            <Image x:Name="QuadImage3" Grid.Row="1" Grid.Column="1" Stretch="Fill"/>
+                        </Grid>
+                        <Grid x:Name="HtmlHost" Visibility="Collapsed"/>
+                        <TextBlock x:Name="ClockOverlay" Text="00:00:00" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                   Margin="24" Foreground="White" FontSize="28" FontWeight="Bold"
+                                   Background="#88000000" Padding="10,4" Visibility="Collapsed"/>
+                        <Grid x:Name="ClimateHost" Visibility="Collapsed" IsHitTestVisible="False"/>
+                        <Grid x:Name="LogoHost" Visibility="Collapsed" IsHitTestVisible="False"
+                              HorizontalAlignment="Right" VerticalAlignment="Top"
+                              Width="320" Height="95" Margin="18,18,18,0" Panel.ZIndex="20"/>
+                        <Grid x:Name="NewsHost" Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="19"/>
+                    </Grid>
+                </Viewbox>
                 <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="14"
                         Padding="10,6" CornerRadius="5" Background="#CC111111">
                     <TextBlock x:Name="StatusText" Foreground="White" FontSize="14" Text="INICIANDO..."/>
