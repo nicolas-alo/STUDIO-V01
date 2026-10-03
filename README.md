@@ -1,5 +1,11 @@
 # STUDIO V01
 
+## ETAPA 2
+- Panel de fuentes y fuente al aire
+- Controles de reloj, clima y mosca
+- Preview de programa
+- Reproductor M3U8
+
 ## ETAPA 1 — desde cero
 
 Base inicial:
