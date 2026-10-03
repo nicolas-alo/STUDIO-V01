@@ -44,6 +44,10 @@ public partial class MainWindow : Window
     private readonly bool[] _climateEnabled = new bool[5];
     private readonly bool[] _logoEnabled = new bool[5];
     private readonly string _logPath = Path.Combine(AppContext.BaseDirectory, "studio.log");
+    private WebView2? _audioPlayer;
+    private WebView2? _htmlPreview;
+    private WebView2? _climateOverlay;
+    private WebView2? _logoOverlay;
 
     public MainWindow()
     {
@@ -63,6 +67,16 @@ public partial class MainWindow : Window
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         Log("INICIO STUDIO V01 ETAPA 2 RECONSTRUIDA");
+        StatusText.Text = "VENTANA ABIERTA — CARGANDO...";
+        try
+        {
+            CreateWebViews();
+        }
+        catch (Exception ex)
+        {
+            Log("WEBVIEW2 NO DISPONIBLE: " + ex);
+            StatusText.Text = "WEBVIEW2 NO DISPONIBLE — VIDEO RTSP CONTINÚA";
+        }
         StatusText.Text = "CARGANDO CONFIGURACIÓN...";
         try
         {
@@ -216,8 +230,8 @@ public partial class MainWindow : Window
     private void HideAllOverlays()
     {
         ClockOverlay.Visibility = Visibility.Collapsed;
-        ClimateOverlay.Visibility = Visibility.Collapsed;
-        LogoOverlay.Visibility = Visibility.Collapsed;
+        ClimateHost.Visibility = Visibility.Collapsed;
+        LogoHost.Visibility = Visibility.Collapsed;
     }
 
     private void ApplyActiveOverlays(int slot) => _ = ApplyActiveOverlaysAsync(slot);
@@ -230,14 +244,44 @@ public partial class MainWindow : Window
 
         if (_climateEnabled[slot])
         {
-            await ShowTransparentWebViewAsync(ClimateOverlay, ClimateUrl);
-            ClimateOverlay.Visibility = Visibility.Visible;
+            if (_climateOverlay is not null)
+            {
+                await ShowTransparentWebViewAsync(_climateOverlay, ClimateUrl);
+                ClimateHost.Visibility = Visibility.Visible;
+            }
         }
 
         if (_logoEnabled[slot])
         {
-            await ShowTransparentWebViewAsync(LogoOverlay, LogoUrl);
-            LogoOverlay.Visibility = Visibility.Visible;
+            if (_logoOverlay is not null)
+            {
+                await ShowTransparentWebViewAsync(_logoOverlay, LogoUrl);
+                LogoHost.Visibility = Visibility.Visible;
+            }
+        }
+    }
+
+    private void CreateWebViews()
+    {
+        if (_audioPlayer is null)
+        {
+            _audioPlayer = new WebView2();
+            AudioHost.Children.Add(_audioPlayer);
+        }
+        if (_htmlPreview is null)
+        {
+            _htmlPreview = new WebView2();
+            HtmlHost.Children.Add(_htmlPreview);
+        }
+        if (_climateOverlay is null)
+        {
+            _climateOverlay = new WebView2 { IsHitTestVisible = false };
+            ClimateHost.Children.Add(_climateOverlay);
+        }
+        if (_logoOverlay is null)
+        {
+            _logoOverlay = new WebView2 { IsHitTestVisible = false };
+            LogoHost.Children.Add(_logoOverlay);
         }
     }
 
@@ -252,8 +296,9 @@ public partial class MainWindow : Window
     {
         try
         {
-            await AudioPlayer.EnsureCoreWebView2Async();
-            AudioPlayer.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 11, 11, 11);
+            if (_audioPlayer is null) return;
+            await _audioPlayer.EnsureCoreWebView2Async();
+            _audioPlayer.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 11, 11, 11);
 
             var configured = _config?.M3u8Url?.Trim() ?? "";
             var jsonUrl = JsonSerializer.Serialize(configured);
@@ -263,7 +308,7 @@ public partial class MainWindow : Window
 const url=__M3U8__; const a=document.getElementById('a'); const s=document.getElementById('s');
 if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.mpegurl')){a.src=url;} else if(window.Hls&&Hls.isSupported()){let h=new Hls();h.loadSource(url);h.attachMedia(a);}}
 </script></body></html>";
-            AudioPlayer.CoreWebView2.NavigateToString(html.Replace("__M3U8__", jsonUrl));
+            _audioPlayer.CoreWebView2.NavigateToString(html.Replace("__M3U8__", jsonUrl));
         }
         catch (Exception ex)
         {
@@ -279,9 +324,10 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
         try
         {
-            await HtmlPreview.EnsureCoreWebView2Async();
-            HtmlPreview.ZoomFactor = CalculateWebZoom();
-            HtmlPreview.Source = new Uri(url);
+            if (_htmlPreview is null) return;
+            await _htmlPreview.EnsureCoreWebView2Async();
+            _htmlPreview.ZoomFactor = CalculateWebZoom();
+            _htmlPreview.Source = new Uri(url);
         }
         catch (Exception ex)
         {
@@ -292,7 +338,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private async Task ShowQuadAsync()
     {
-        HtmlPreview.Visibility = Visibility.Collapsed;
+        HtmlHost.Visibility = Visibility.Collapsed;
         PreviewImage.Visibility = Visibility.Collapsed;
         QuadPreview.Visibility = Visibility.Visible;
 
@@ -521,8 +567,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (HtmlPreview.CoreWebView2 is not null)
-            HtmlPreview.ZoomFactor = CalculateWebZoom();
+        if (_htmlPreview?.CoreWebView2 is not null)
+            _htmlPreview.ZoomFactor = CalculateWebZoom();
     }
 
     private void Log(string message)
