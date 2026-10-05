@@ -33,7 +33,6 @@ public partial class MainWindow : Window
     }
 
     private readonly DispatcherTimer _cycleTimer = new();
-    private readonly DispatcherTimer _clockTimer = new();
     private CancellationTokenSource? _sourceCts;
     private CancellationTokenSource? _quadCts;
     private Process? _ffmpeg;
@@ -41,7 +40,6 @@ public partial class MainWindow : Window
     private LocalConfig? _config;
     private int _index = -1;
     private bool _manualSelection;
-    private readonly bool[] _clockEnabled = new bool[5];
     private readonly bool[] _climateEnabled = new bool[5];
     private readonly bool[] _logoEnabled = new bool[5];
     private readonly bool[] _newsEnabled = new bool[5];
@@ -63,8 +61,6 @@ public partial class MainWindow : Window
             if (!_manualSelection)
                 await ShowNextAsync();
         };
-        _clockTimer.Interval = TimeSpan.FromSeconds(1);
-        _clockTimer.Tick += (_, _) => ClockOverlay.Text = DateTime.Now.ToString("HH:mm:ss");
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -92,7 +88,6 @@ public partial class MainWindow : Window
             }
 
             _cycleTimer.Interval = TimeSpan.FromSeconds(Math.Max(1, _config.CycleSeconds));
-            _clockTimer.Start();
             _cycleTimer.Start();
 
             // Cargar overlays una sola vez; al cambiar de cámara solo se muestran/ocultan.
@@ -220,7 +215,6 @@ public partial class MainWindow : Window
         var enabled = button.IsChecked == true;
         switch (parts[1])
         {
-            case "clock": _clockEnabled[slot] = enabled; break;
             case "climate": _climateEnabled[slot] = enabled; break;
             case "logo": _logoEnabled[slot] = enabled; break;
             case "news": _newsEnabled[slot] = enabled; break;
@@ -235,7 +229,6 @@ public partial class MainWindow : Window
 
     private void HideAllOverlays()
     {
-        ClockOverlay.Visibility = Visibility.Collapsed;
         ClimateHost.Visibility = Visibility.Collapsed;
         LogoHost.Visibility = Visibility.Collapsed;
         NewsHost.Visibility = Visibility.Collapsed;
@@ -246,9 +239,6 @@ public partial class MainWindow : Window
     private async Task ApplyActiveOverlaysAsync(int slot)
     {
         HideAllOverlays();
-        ClockOverlay.Text = DateTime.Now.ToString("HH:mm:ss");
-        if (_clockEnabled[slot]) ClockOverlay.Visibility = Visibility.Visible;
-
         // Los WebView2 quedan cargados: no se vuelve a navegar al cambiar de cámara.
         if (_climateEnabled[slot] && _climateOverlay is not null)
             ClimateHost.Visibility = Visibility.Visible;
@@ -603,13 +593,39 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private double CalculateWebZoom()
     {
-        var w = Math.Max(320, ActualWidth - 330);
-        var h = Math.Max(240, ActualHeight - 30);
-        return Math.Min(w / OutputWidth, h / OutputHeight);
+        if (ProgramCanvas.ActualWidth <= 1 || ProgramCanvas.ActualHeight <= 1)
+            return 1.0;
+
+        // Las páginas HTML de programación se diseñan en 1920x1080.
+        return Math.Min(1.0, Math.Min(
+            ProgramCanvas.ActualWidth / OutputWidth,
+            ProgramCanvas.ActualHeight / OutputHeight));
     }
 
     private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
     {
+        if (_htmlPreview?.CoreWebView2 is not null)
+            _htmlPreview.ZoomFactor = CalculateWebZoom();
+    }
+
+    private void PreviewContainer_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var availableWidth = Math.Max(1, PreviewContainer.ActualWidth);
+        var availableHeight = Math.Max(1, PreviewContainer.ActualHeight);
+
+        // Mantener SIEMPRE una superficie real 16:9 para video y todas las capas web.
+        var width = availableWidth;
+        var height = width * 9.0 / 16.0;
+
+        if (height > availableHeight)
+        {
+            height = availableHeight;
+            width = height * 16.0 / 9.0;
+        }
+
+        ProgramCanvas.Width = Math.Max(1, width);
+        ProgramCanvas.Height = Math.Max(1, height);
+
         if (_htmlPreview?.CoreWebView2 is not null)
             _htmlPreview.ZoomFactor = CalculateWebZoom();
     }
@@ -670,7 +686,6 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private async void MainWindow_Closed(object? sender, EventArgs e)
     {
         _cycleTimer.Stop();
-        _clockTimer.Stop();
         await StopCurrentAsync();
     }
 }
