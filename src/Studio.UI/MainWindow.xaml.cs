@@ -120,15 +120,15 @@ public partial class MainWindow : Window
     {
         if (_config is null) return;
 
-        var totalSources = _config.Sources.Count + 1;
-        _index = (_index + 1) % totalSources;
+        // Orden de aire: Puente → Puerto → Esquina → Edificio JJ → 4 Cámaras → Grilla → Placa de programas.
+        _index = (_index + 1) % 7;
         await ShowCurrentAsync();
     }
 
     private async Task SelectSourceAsync(int slot)
     {
         if (_config is null) return;
-        if (slot < 0 || slot > 4) return;
+        if (slot < 0 || slot > 6) return;
 
         _manualSelection = true;
         _index = slot;
@@ -143,7 +143,7 @@ public partial class MainWindow : Window
         UpdateAirCard();
         HideAllOverlays();
 
-        if (_index == _config.Sources.Count)
+        if (_index == 4)
         {
             StatusText.Text = "4 CÁMARAS • 1920×1080 • 29.97 FPS";
             await ShowQuadAsync();
@@ -151,7 +151,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        var source = _config.Sources[_index];
+        // Los HTML ocupan las posiciones 5 y 6 del ciclo, pero son las fuentes 4 y 5 del JSON.
+        var sourceIndex = _index >= 5 ? _index - 1 : _index;
+        var source = _config.Sources[sourceIndex];
         StatusText.Text = source.Name + " • " + source.Type.ToUpperInvariant() + " • 1920×1080 • 29.97 FPS";
 
         if (source.Type.Equals("HTML", StringComparison.OrdinalIgnoreCase))
@@ -170,11 +172,13 @@ public partial class MainWindow : Window
         else if (sender == CardEsquina) await SelectSourceAsync(2);
         else if (sender == CardEdificio) await SelectSourceAsync(3);
         else if (sender == CardQuad) await SelectSourceAsync(4);
+        else if (sender == CardGrilla) await SelectSourceAsync(5);
+        else if (sender == CardProgramas) await SelectSourceAsync(6);
     }
 
     private void UpdateAirCard()
     {
-        var cards = new[] { CardPuente, CardPuerto, CardEsquina, CardEdificio, CardQuad };
+        var cards = new[] { CardPuente, CardPuerto, CardEsquina, CardEdificio, CardQuad, CardGrilla, CardProgramas };
         foreach (var card in cards)
         {
             card.Background = new System.Windows.Media.SolidColorBrush(
@@ -183,7 +187,7 @@ public partial class MainWindow : Window
                 System.Windows.Media.Color.FromRgb(48, 48, 48));
         }
 
-        var active = _index >= 0 && _index <= 4 ? _index : -1;
+        var active = _index >= 0 && _index <= 6 ? _index : -1;
         if (active >= 0)
         {
             cards[active].Background = new System.Windows.Media.SolidColorBrush(
@@ -197,12 +201,14 @@ public partial class MainWindow : Window
                 2 => "ESQUINA",
                 3 => "EDIFICIO JJ",
                 4 => "4 CÁMARAS",
+                5 => "GRILLA",
+                6 => "PLACA DE PROGRAMAS",
                 _ => "—"
             });
         }
         else
         {
-            AirStatusText.Text = "AL AIRE: " + (_index == 5 ? "GRILLA" : _index == 6 ? "PROMO" : "—");
+            AirStatusText.Text = "AL AIRE: " + (_index == 5 ? "GRILLA" : _index == 6 ? "PLACA DE PROGRAMAS" : "—");
         }
     }
 
