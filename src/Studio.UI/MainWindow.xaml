@@ -103,6 +103,18 @@
                             </StackPanel>
                         </Border>
 
+                        <Border x:Name="CardGrilla" Style="{StaticResource SourceCardStyle}" MouseLeftButtonUp="SourceCard_Click">
+                            <StackPanel>
+                                <TextBlock Text="GRILLA" Style="{StaticResource SourceNameStyle}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border x:Name="CardProgramas" Style="{StaticResource SourceCardStyle}" MouseLeftButtonUp="SourceCard_Click">
+                            <StackPanel>
+                                <TextBlock Text="PLACA DE PROGRAMAS" Style="{StaticResource SourceNameStyle}"/>
+                            </StackPanel>
+                        </Border>
+
                         <TextBlock x:Name="AirStatusText" Text="AL AIRE: —" Foreground="#AAAAAA" FontSize="13" Margin="5,10,5,4"/>
                     </StackPanel>
                 </ScrollViewer>
