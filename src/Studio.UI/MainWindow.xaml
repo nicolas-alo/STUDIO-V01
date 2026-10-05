@@ -135,12 +135,16 @@
         <Border Grid.Column="1" Background="#000000" CornerRadius="8" BorderBrush="#262626" BorderThickness="1">
             <Grid x:Name="PreviewContainer" ClipToBounds="True" SizeChanged="PreviewContainer_SizeChanged">
                 <Grid x:Name="ProgramCanvas"
-                      Width="100"
-                      Height="56.25"
+                      Width="1920"
+                      Height="1080"
                       HorizontalAlignment="Center"
                       VerticalAlignment="Center"
                       Background="#000000"
-                      ClipToBounds="True">
+                      ClipToBounds="True"
+                      RenderTransformOrigin="0.5,0.5">
+                    <Grid.RenderTransform>
+                        <ScaleTransform x:Name="ProgramScale" ScaleX="1" ScaleY="1"/>
+                    </Grid.RenderTransform>
                     <Image x:Name="PreviewImage" Stretch="Fill" Visibility="Collapsed"/>
                     <Grid x:Name="QuadPreview" Visibility="Collapsed" Background="#080808">
                         <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="*"/></Grid.RowDefinitions>
