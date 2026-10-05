@@ -597,16 +597,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         }
     }
 
-    private double CalculateWebZoom()
-    {
-        if (ProgramCanvas.ActualWidth <= 1 || ProgramCanvas.ActualHeight <= 1)
-            return 1.0;
-
-        // Las páginas HTML de programación se diseñan en 1920x1080.
-        return Math.Min(1.0, Math.Min(
-            ProgramCanvas.ActualWidth / OutputWidth,
-            ProgramCanvas.ActualHeight / OutputHeight));
-    }
+    private double CalculateWebZoom() => 1.0;
 
     private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
     {
@@ -619,21 +610,19 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         var availableWidth = Math.Max(1, PreviewContainer.ActualWidth);
         var availableHeight = Math.Max(1, PreviewContainer.ActualHeight);
 
-        // Mantener SIEMPRE una superficie real 16:9 para video y todas las capas web.
-        var width = availableWidth;
-        var height = width * 9.0 / 16.0;
+        // La señal/programa SIEMPRE existe como 1920x1080.
+        // El tamaño de la ventana solo cambia la escala visual de esta PREVIEW.
+        var scale = Math.Min(
+            availableWidth / (double)OutputWidth,
+            availableHeight / (double)OutputHeight);
 
-        if (height > availableHeight)
-        {
-            height = availableHeight;
-            width = height * 16.0 / 9.0;
-        }
+        ProgramScale.ScaleX = scale;
+        ProgramScale.ScaleY = scale;
 
-        ProgramCanvas.Width = Math.Max(1, width);
-        ProgramCanvas.Height = Math.Max(1, height);
-
+        // Las páginas HTML trabajan siempre con viewport 1920x1080.
+        // No se modifica su zoom cuando el usuario agranda/achica la aplicación.
         if (_htmlPreview?.CoreWebView2 is not null)
-            _htmlPreview.ZoomFactor = CalculateWebZoom();
+            _htmlPreview.ZoomFactor = 1.0;
     }
 
     private void Log(string message)
