@@ -149,16 +149,25 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="92"/>
                                 </Grid.ColumnDefinitions>
-                                <ComboBox x:Name="NdiSourceCombo" Grid.Column="0" Height="32" Margin="0,0,6,6" SelectionChanged="NdiSourceCombo_SelectionChanged" ToolTip="Seleccioná una fuente NDI para verla en el preview"/>
+                                <ComboBox x:Name="NdiSourceCombo" Grid.Column="0" Height="32" Margin="0,0,6,6" ToolTip="Seleccioná una fuente NDI"/>
                                 <Button Grid.Column="1" Content="REFRESCAR" Height="32" Click="NdiRefresh_Click"/>
                             </Grid>
 
-                            <StackPanel Grid.Row="1">
+                            <Grid Grid.Row="1" Margin="0,0,0,5">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" x:Name="NdiConnectButton" Content="CONECTAR NDI / AL AIRE" Height="30" Margin="0,0,4,0" Click="NdiConnect_Click"/>
+                                <Button Grid.Column="1" x:Name="NdiReturnButton" Content="VOLVER AL PROGRAMA" Height="30" Margin="4,0,0,0" Click="NdiReturn_Click"/>
+                            </Grid>
+
+                            <StackPanel Grid.Row="2">
                                 <TextBlock x:Name="NdiRuntimeStatus" Text="NDI: buscando Runtime..." Foreground="#AAAAAA" FontSize="12" Margin="2,0,2,2"/>
                                 <TextBlock x:Name="NdiOutputStatus" Text="NDI SALIDA: iniciando..." Foreground="#7FC7FF" FontSize="12" Margin="2,0,2,5"/>
                             </StackPanel>
 
-                            <Grid Grid.Row="2">
+                            <Grid Grid.Row="3">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
