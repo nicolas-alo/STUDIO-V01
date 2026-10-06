@@ -587,7 +587,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private async Task ReadFramesAsync(Process process, CancellationToken token)
     {
-        const int bpp = 3;
+        // FFmpeg entrega BGR0/BGRX: 4 bytes por pixel.
+        const int bpp = 4;
         var frameSize = OutputWidth * OutputHeight * bpp;
         var buffer = new byte[frameSize];
 
@@ -613,8 +614,16 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
                 if (_ndiService.IsSenderActive)
                 {
-                    lock (_ndiOutputLock)
-                        _ndiService.SendBgrx(frame, OutputWidth, OutputHeight, OutputWidth * bpp);
+                    try
+                    {
+                        lock (_ndiOutputLock)
+                            _ndiService.SendBgrx(frame, OutputWidth, OutputHeight, OutputWidth * bpp);
+                    }
+                    catch (Exception ndiEx)
+                    {
+                        Log("NDI SALIDA FRAME ERROR: " + ndiEx);
+                        await Dispatcher.InvokeAsync(() => NdiOutputStatus.Text = "NDI SALIDA ERROR — " + ndiEx.Message);
+                    }
                 }
 
                 await Dispatcher.InvokeAsync(() =>
@@ -712,7 +721,10 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                 if (_ndiService.StartSender(string.IsNullOrWhiteSpace(name) ? "STUDIO V01" : name))
                     NdiOutputStatus.Text = "NDI SALIDA: ACTIVA — video 1920×1080";
                 else
-                    NdiOutputStatus.Text = "NDI SALIDA: ERROR";
+                {
+                    NdiOutputStatus.Text = "NDI SALIDA ERROR — " + _ndiService.Status;
+                    Log("NDI SALIDA ERROR: " + _ndiService.Status);
+                }
             }
         }
         catch (Exception ex)
@@ -860,9 +872,15 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             name = "STUDIO V01";
 
         if (_ndiService.StartSender(name))
-            NdiOutputStatus.Text = "NDI SALIDA: ACTIVA — video 1920×1080";
+        {
+            NdiOutputStatus.Text = "NDI SALIDA: ACTIVA — " + name;
+            Log("NDI SALIDA ACTIVA: " + name);
+        }
         else
-            NdiOutputStatus.Text = "NDI SALIDA: ERROR";
+        {
+            NdiOutputStatus.Text = "NDI SALIDA ERROR — " + _ndiService.Status;
+            Log("NDI SALIDA ERROR: " + _ndiService.Status);
+        }
     }
 
     private void Log(string message)
