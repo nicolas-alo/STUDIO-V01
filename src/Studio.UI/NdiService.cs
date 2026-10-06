@@ -1,3 +1,4 @@
+using System.IO;
 using System.Runtime.InteropServices;
 
 namespace Studio.UI;
@@ -185,6 +186,7 @@ public sealed class NdiService : IDisposable
 
     private static IEnumerable<string> GetLibraryCandidates()
     {
+        var yieldDummy = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         void Add(string? path)
@@ -197,8 +199,6 @@ public sealed class NdiService : IDisposable
             if (seen.Add(normalized))
                 yieldDummy.Add(normalized);
         }
-
-        var yieldDummy = new List<string>();
 
         Add(Environment.GetEnvironmentVariable("NDI_RUNTIME_DIR_V6"));
         Add(Environment.GetEnvironmentVariable("NDI_RUNTIME_DIR_V5"));
