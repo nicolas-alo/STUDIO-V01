@@ -111,6 +111,9 @@ public sealed class NdiService : IDisposable
     private delegate IntPtr SendCreateDelegate(ref NdiSendCreate settings);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate IntPtr SendCreateV2Delegate(ref NdiSendCreate settings, IntPtr configJson);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void SendDestroyDelegate(IntPtr instance);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -140,6 +143,7 @@ public sealed class NdiService : IDisposable
     private RecvCaptureV3Delegate? _recvCaptureV3;
     private RecvFreeVideoV2Delegate? _recvFreeVideoV2;
     private SendCreateDelegate? _sendCreate;
+    private SendCreateV2Delegate? _sendCreateV2;
     private SendDestroyDelegate? _sendDestroy;
     private SendVideoV2Delegate? _sendVideoV2;
 
@@ -176,6 +180,7 @@ public sealed class NdiService : IDisposable
                 _recvCaptureV3 = LoadDelegate<RecvCaptureV3Delegate>("NDIlib_recv_capture_v3");
                 _recvFreeVideoV2 = LoadDelegate<RecvFreeVideoV2Delegate>("NDIlib_recv_free_video_v2");
                 _sendCreate = LoadDelegate<SendCreateDelegate>("NDIlib_send_create");
+                _sendCreateV2 = LoadDelegate<SendCreateV2Delegate>("NDIlib_send_create_v2");
                 _sendDestroy = LoadDelegate<SendDestroyDelegate>("NDIlib_send_destroy");
                 _sendVideoV2 = LoadDelegate<SendVideoV2Delegate>("NDIlib_send_send_video_v2");
 
@@ -184,7 +189,7 @@ public sealed class NdiService : IDisposable
                     _findWaitForSources is null || _findGetCurrentSources is null ||
                     _recvCreateV3 is null || _recvDestroy is null ||
                     _recvCaptureV3 is null || _recvFreeVideoV2 is null ||
-                    _sendCreate is null || _sendDestroy is null || _sendVideoV2 is null)
+                    (_sendCreate is null && _sendCreateV2 is null) || _sendDestroy is null || _sendVideoV2 is null)
                 {
                     UnloadLibrary();
                     continue;
@@ -385,7 +390,13 @@ public sealed class NdiService : IDisposable
                 ClockAudio = false
             };
 
-            _sender = _sendCreate(ref settings);
+            // NDI 6/Advanced SDK ofrece send_create_v2; usamos v2 primero y
+            // dejamos la función clásica como fallback para runtimes anteriores.
+            if (_sendCreateV2 is not null)
+                _sender = _sendCreateV2(ref settings, IntPtr.Zero);
+            if (_sender == IntPtr.Zero && _sendCreate is not null)
+                _sender = _sendCreate(ref settings);
+
             if (_sender == IntPtr.Zero)
             {
                 Marshal.FreeCoTaskMem(_senderName);
@@ -550,6 +561,7 @@ public sealed class NdiService : IDisposable
         _recvCaptureV3 = null;
         _recvFreeVideoV2 = null;
         _sendCreate = null;
+        _sendCreateV2 = null;
         _sendDestroy = null;
         _sendVideoV2 = null;
     }
