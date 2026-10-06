@@ -54,6 +54,7 @@ public partial class MainWindow : Window
     private readonly NdiService _ndiService = new();
     private readonly object _ndiOutputLock = new();
     private readonly byte[]?[] _quadNdiFrames = new byte[4][];
+    private bool _ndiInputOnAir;
 
     public MainWindow()
     {
@@ -734,16 +735,31 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         }
     }
 
-    private async void NdiSourceCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void NdiSourceCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (NdiSourceCombo.SelectedItem is NdiSourceInfo source)
+        {
+            StatusText.Text = "NDI seleccionado: " + source.Name + " — presioná CONECTAR NDI / AL AIRE";
+            Log("NDI seleccionado (sin conectar): " + source.Name);
+        }
+    }
+
+    private async void NdiConnect_Click(object sender, RoutedEventArgs e)
     {
         if (NdiSourceCombo.SelectedItem is not NdiSourceInfo source)
+        {
+            StatusText.Text = "NDI: seleccioná una fuente primero.";
             return;
+        }
 
         try
         {
             _manualSelection = true;
+            _ndiInputOnAir = false;
             _index = -1;
+
             await StopCurrentAsync();
+
             _ndiService.StopReceiver();
             _ndiCts?.Cancel();
             _ndiCts?.Dispose();
@@ -757,17 +773,50 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             if (!_ndiService.StartReceiver(source))
             {
                 StatusText.Text = "NDI INPUT ERROR — " + _ndiService.Status;
+                Log("NDI INPUT ERROR: " + _ndiService.Status);
                 return;
             }
 
+            _ndiInputOnAir = true;
             _ndiCts = new CancellationTokenSource();
-            StatusText.Text = "NDI INPUT • " + source.Name + " • esperando video...";
+            NdiConnectButton.IsEnabled = false;
+            NdiReturnButton.IsEnabled = true;
+            StatusText.Text = "NDI AL AIRE • " + source.Name + " • esperando video...";
+            Log("NDI AL AIRE: " + source.Name);
             _ = Task.Run(() => ReadNdiFramesAsync(_ndiCts.Token), _ndiCts.Token);
         }
         catch (Exception ex)
         {
-            Log("NDI INPUT UI ERROR: " + ex);
+            Log("NDI CONNECT ERROR: " + ex);
             StatusText.Text = "NDI INPUT ERROR: " + ex.Message;
+        }
+    }
+
+    private async void NdiReturn_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _ndiInputOnAir = false;
+            _ndiCts?.Cancel();
+            _ndiCts?.Dispose();
+            _ndiCts = null;
+            _ndiService.StopReceiver();
+
+            NdiSourceCombo.SelectedIndex = -1;
+            NdiConnectButton.IsEnabled = true;
+            NdiReturnButton.IsEnabled = false;
+
+            _manualSelection = false;
+            _index = -1;
+
+            Log("NDI: retorno al programa automático.");
+            await ShowNextAsync();
+            StatusText.Text = "PROGRAMA AL AIRE — ciclo automático";
+        }
+        catch (Exception ex)
+        {
+            Log("NDI RETURN ERROR: " + ex);
+            StatusText.Text = "ERROR AL VOLVER AL PROGRAMA: " + ex.Message;
         }
     }
 
@@ -850,14 +899,15 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         Dispatcher.Invoke(() =>
         {
             NdiSourceCombo.ItemsSource = sources;
-            if (sources.Count > 0)
-                NdiSourceCombo.SelectedIndex = 0;
+            NdiSourceCombo.SelectedIndex = -1;
 
             var runtime = Path.GetFileName(_ndiService.RuntimePath ?? "NDI Runtime");
             NdiRuntimeStatus.Text = sources.Count == 0
                 ? $"NDI: Runtime OK ({runtime}) — sin fuentes detectadas"
                 : $"NDI: {sources.Count} fuente(s) detectada(s) — {runtime}";
 
+            NdiConnectButton.IsEnabled = sources.Count > 0;
+            NdiReturnButton.IsEnabled = _ndiInputOnAir;
             Log(NdiRuntimeStatus.Text);
         });
     }
