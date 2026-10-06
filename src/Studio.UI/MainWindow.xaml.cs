@@ -53,7 +53,7 @@ public partial class MainWindow : Window
     private WebView2? _newsOverlay;
     private readonly NdiService _ndiService = new();
     private readonly object _ndiOutputLock = new();
-    private readonly byte[]?[] _quadNdiFrames = new byte[4];
+    private readonly byte[]?[] _quadNdiFrames = new byte[4][];
 
     public MainWindow()
     {
@@ -848,6 +848,21 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
             Log(NdiRuntimeStatus.Text);
         });
+    }
+
+    private void NdiOutputNameBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_ndiService.IsAvailable || !IsLoaded)
+            return;
+
+        var name = NdiOutputNameBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            name = "STUDIO V01";
+
+        if (_ndiService.StartSender(name))
+            NdiOutputStatus.Text = "NDI SALIDA: ACTIVA — video 1920×1080";
+        else
+            NdiOutputStatus.Text = "NDI SALIDA: ERROR";
     }
 
     private void Log(string message)
