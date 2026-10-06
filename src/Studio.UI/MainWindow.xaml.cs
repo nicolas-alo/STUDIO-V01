@@ -601,28 +601,45 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (_htmlPreview?.CoreWebView2 is not null)
-            _htmlPreview.ZoomFactor = CalculateWebZoom();
+        ResizeProgramPreview();
     }
 
     private void PreviewContainer_SizeChanged(object sender, SizeChangedEventArgs e)
     {
+        ResizeProgramPreview();
+    }
+
+    private void ResizeProgramPreview()
+    {
         var availableWidth = Math.Max(1, PreviewContainer.ActualWidth);
         var availableHeight = Math.Max(1, PreviewContainer.ActualHeight);
 
-        // La señal/programa SIEMPRE existe como 1920x1080.
-        // El tamaño de la ventana solo cambia la escala visual de esta PREVIEW.
+        // El programa sigue siendo conceptualmente 1920x1080.
+        // Solo el RECTÁNGULO DEL PREVIEW cambia de tamaño. No se usa RenderTransform
+        // porque WebView2 es un control nativo y no debe quedar a otra escala.
         var scale = Math.Min(
             availableWidth / (double)OutputWidth,
             availableHeight / (double)OutputHeight);
 
-        ProgramScale.ScaleX = scale;
-        ProgramScale.ScaleY = scale;
+        var width = Math.Max(1, OutputWidth * scale);
+        var height = Math.Max(1, OutputHeight * scale);
 
-        // Las páginas HTML trabajan siempre con viewport 1920x1080.
-        // No se modifica su zoom cuando el usuario agranda/achica la aplicación.
-        if (_htmlPreview?.CoreWebView2 is not null)
-            _htmlPreview.ZoomFactor = 1.0;
+        ProgramCanvas.Width = width;
+        ProgramCanvas.Height = height;
+
+        // WebView2 recibe el mismo factor de preview. Con zoom proporcional,
+        // una página diseñada en 1920x1080 conserva su composición y solamente
+        // se reduce visualmente para entrar en el visor.
+        var webZoom = Math.Max(0.25, Math.Min(1.0, scale));
+
+        if (_htmlPreview is not null)
+            _htmlPreview.ZoomFactor = webZoom;
+        if (_climateOverlay is not null)
+            _climateOverlay.ZoomFactor = webZoom;
+        if (_logoOverlay is not null)
+            _logoOverlay.ZoomFactor = webZoom;
+        if (_newsOverlay is not null)
+            _newsOverlay.ZoomFactor = webZoom;
     }
 
     private void Log(string message)
