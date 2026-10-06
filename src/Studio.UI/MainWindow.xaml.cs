@@ -50,6 +50,8 @@ public partial class MainWindow : Window
     private WebView2? _logoOverlay;
     private WebView2? _newsOverlay;
     private readonly NdiService _ndiService = new();
+    private readonly object _ndiOutputLock = new();
+    private readonly byte[]?[] _quadNdiFrames = new byte[4];
 
     public MainWindow()
     {
@@ -393,6 +395,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             return;
         }
 
+        Array.Clear(_quadNdiFrames, 0, _quadNdiFrames.Length);
         var images = new[] { QuadImage0, QuadImage1, QuadImage2, QuadImage3 };
         foreach (var image in images)
         {
@@ -430,7 +433,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(source.Url);
         psi.ArgumentList.Add("-an");
         psi.ArgumentList.Add("-vf"); psi.ArgumentList.Add("scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2,fps=30000/1001");
-        psi.ArgumentList.Add("-pix_fmt"); psi.ArgumentList.Add("bgr24");
+        psi.ArgumentList.Add("-pix_fmt"); psi.ArgumentList.Add("bgr0");
         psi.ArgumentList.Add("-f"); psi.ArgumentList.Add("rawvideo");
         psi.ArgumentList.Add("pipe:1");
 
@@ -492,6 +495,32 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { Log($"4CAM[{slot + 1}] ERROR: {ex}"); }
+    }
+
+    private byte[]? ComposeQuadNdiFrame()
+    {
+        const int cellWidth = 960;
+        const int cellHeight = 540;
+        const int bpp = 4;
+        var output = new byte[OutputWidth * OutputHeight * bpp];
+
+        for (var slot = 0; slot < 4; slot++)
+        {
+            var source = _quadNdiFrames[slot];
+            if (source is null) continue;
+
+            var dstX = (slot % 2) * cellWidth;
+            var dstY = (slot / 2) * cellHeight;
+
+            for (var y = 0; y < cellHeight; y++)
+            {
+                var srcOffset = y * cellWidth * bpp;
+                var dstOffset = ((dstY + y) * OutputWidth + dstX) * bpp;
+                Buffer.BlockCopy(source, srcOffset, output, dstOffset, cellWidth * bpp);
+            }
+        }
+
+        return output;
     }
 
     private async Task ShowRtspAsync(string url)
@@ -599,7 +628,16 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         }
     }
 
-    private double CalculateWebZoom() => 1.0;
+    private double CalculateWebZoom()
+    {
+        var availableWidth = Math.Max(1, PreviewContainer.ActualWidth);
+        var availableHeight = Math.Max(1, PreviewContainer.ActualHeight);
+        var scale = Math.Min(
+            availableWidth / (double)OutputWidth,
+            availableHeight / (double)OutputHeight);
+
+        return Math.Max(0.25, Math.Min(1.0, scale));
+    }
 
     private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
     {
