@@ -1,5 +1,13 @@
 # STUDIO V01
 
+## ETAPA 3 — NDI
+- Detección dinámica del NDI Runtime instalado en Windows.
+- Detección y listado de fuentes NDI disponibles en la red.
+- Botón de actualización de fuentes NDI.
+- Nombre configurable para la futura SALIDA GENERAL NDI.
+- La aplicación no incluye ni redistribuye el DLL propietario de NDI: utiliza el Runtime instalado en el equipo.
+
+
 ## ETAPA 2
 - Panel de fuentes y fuente al aire
 - Controles de reloj, clima y mosca
