@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _cycleTimer = new();
     private CancellationTokenSource? _sourceCts;
     private CancellationTokenSource? _quadCts;
+    private CancellationTokenSource? _ndiCts;
     private Process? _ffmpeg;
     private readonly List<Process> _quadProcesses = [];
     private LocalConfig? _config;
@@ -369,8 +370,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                     document.documentElement.appendChild(style);
                 })();
             ");
-            _htmlPreview.ZoomFactor = CalculateWebZoom();
             _htmlPreview.Source = new Uri(url);
+            ResizeProgramPreview();
         }
         catch (Exception ex)
         {
@@ -457,7 +458,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                 catch { }
             }, token);
 
-            const int width = 960, height = 540, bpp = 3;
+            const int width = 960, height = 540, bpp = 4;
             var frameSize = width * height * bpp;
             var buffer = new byte[frameSize];
             var stream = process.StandardOutput.BaseStream;
@@ -477,8 +478,19 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                 var frame = new byte[frameSize];
                 Buffer.BlockCopy(buffer, 0, frame, 0, frameSize);
                 var bitmap = BitmapSource.Create(width, height, 96, 96,
-                    System.Windows.Media.PixelFormats.Bgr24, null, frame, width * bpp);
+                    System.Windows.Media.PixelFormats.Bgr32, null, frame, width * bpp);
                 bitmap.Freeze();
+
+                if (_ndiService.IsSenderActive)
+                {
+                    lock (_ndiOutputLock)
+                    {
+                        _quadNdiFrames[slot] = frame;
+                        var composed = ComposeQuadNdiFrame();
+                        if (composed is not null)
+                            _ndiService.SendBgrx(composed, OutputWidth, OutputHeight, OutputWidth * 4);
+                    }
+                }
 
                 await Dispatcher.InvokeAsync(() =>
                 {
@@ -552,7 +564,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(url);
         psi.ArgumentList.Add("-an");
         psi.ArgumentList.Add("-vf"); psi.ArgumentList.Add("scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(oh-ih)*0+((ow-iw)/2):(oh-ih)/2,fps=30000/1001");
-        psi.ArgumentList.Add("-pix_fmt"); psi.ArgumentList.Add("bgr24");
+        psi.ArgumentList.Add("-pix_fmt"); psi.ArgumentList.Add("bgr0");
         psi.ArgumentList.Add("-f"); psi.ArgumentList.Add("rawvideo");
         psi.ArgumentList.Add("pipe:1");
 
@@ -595,8 +607,14 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                 var frame = new byte[frameSize];
                 Buffer.BlockCopy(buffer, 0, frame, 0, frameSize);
                 var bitmap = BitmapSource.Create(OutputWidth, OutputHeight, 96, 96,
-                    System.Windows.Media.PixelFormats.Bgr24, null, frame, OutputWidth * bpp);
+                    System.Windows.Media.PixelFormats.Bgr32, null, frame, OutputWidth * bpp);
                 bitmap.Freeze();
+
+                if (_ndiService.IsSenderActive)
+                {
+                    lock (_ndiOutputLock)
+                        _ndiService.SendBgrx(frame, OutputWidth, OutputHeight, OutputWidth * bpp);
+                }
 
                 await Dispatcher.InvokeAsync(() =>
                 {
@@ -687,11 +705,98 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         try
         {
             await Task.Run(RefreshNdiSources);
+            if (!_ndiService.IsSenderActive)
+            {
+                var name = NdiOutputNameBox.Text.Trim();
+                if (_ndiService.StartSender(string.IsNullOrWhiteSpace(name) ? "STUDIO V01" : name))
+                    NdiOutputStatus.Text = "NDI SALIDA: ACTIVA — video 1920×1080";
+                else
+                    NdiOutputStatus.Text = "NDI SALIDA: ERROR";
+            }
         }
         catch (Exception ex)
         {
             Log("NDI INICIALIZACIÓN ERROR: " + ex);
             NdiRuntimeStatus.Text = "NDI ERROR: " + ex.Message;
+        }
+    }
+
+    private async void NdiSourceCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (NdiSourceCombo.SelectedItem is not NdiSourceInfo source)
+            return;
+
+        try
+        {
+            _manualSelection = true;
+            _index = -1;
+            await StopCurrentAsync();
+            _ndiService.StopReceiver();
+            _ndiCts?.Cancel();
+            _ndiCts?.Dispose();
+            _ndiCts = null;
+            HideAllOverlays();
+
+            HtmlHost.Visibility = Visibility.Collapsed;
+            QuadPreview.Visibility = Visibility.Collapsed;
+            PreviewImage.Visibility = Visibility.Visible;
+
+            if (!_ndiService.StartReceiver(source))
+            {
+                StatusText.Text = "NDI INPUT ERROR — " + _ndiService.Status;
+                return;
+            }
+
+            _ndiCts = new CancellationTokenSource();
+            StatusText.Text = "NDI INPUT • " + source.Name + " • esperando video...";
+            _ = Task.Run(() => ReadNdiFramesAsync(_ndiCts.Token), _ndiCts.Token);
+        }
+        catch (Exception ex)
+        {
+            Log("NDI INPUT UI ERROR: " + ex);
+            StatusText.Text = "NDI INPUT ERROR: " + ex.Message;
+        }
+    }
+
+    private async Task ReadNdiFramesAsync(CancellationToken token)
+    {
+        var firstFrame = true;
+
+        while (!token.IsCancellationRequested && _ndiService.IsReceiverActive)
+        {
+            try
+            {
+                if (_ndiService.TryCaptureBgrx(out var pixels, out var width, out var height, out var stride) &&
+                    pixels is not null)
+                {
+                    var bitmap = BitmapSource.Create(
+                        width, height, 96, 96,
+                        System.Windows.Media.PixelFormats.Bgr32,
+                        null, pixels, stride);
+                    bitmap.Freeze();
+
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        if (token.IsCancellationRequested) return;
+                        PreviewImage.Source = bitmap;
+                        PreviewImage.Visibility = Visibility.Visible;
+                        if (firstFrame)
+                        {
+                            firstFrame = false;
+                            StatusText.Text = $"NDI INPUT • {width}×{height} • fuente NDI";
+                        }
+                    });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                Log("NDI INPUT FRAME ERROR: " + ex);
+                try { await Task.Delay(100, token); } catch { break; }
+            }
         }
     }
 
