@@ -49,6 +49,7 @@ public partial class MainWindow : Window
     private WebView2? _climateOverlay;
     private WebView2? _logoOverlay;
     private WebView2? _newsOverlay;
+    private readonly NdiService _ndiService = new();
 
     public MainWindow()
     {
@@ -65,7 +66,7 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        Log("INICIO STUDIO V01 ETAPA 2 RECONSTRUIDA");
+        Log("INICIO STUDIO V01 ETAPA 3 — NDI");
         StatusText.Text = "VENTANA ABIERTA — CARGANDO...";
         try
         {
@@ -92,6 +93,7 @@ public partial class MainWindow : Window
 
             // Cargar overlays una sola vez; al cambiar de cámara solo se muestran/ocultan.
             _ = InitializeOverlayWebViewsSafeAsync();
+            _ = InitializeNdiSafeAsync();
             await ShowNextAsync();
 
             // El reproductor M3U8 nunca debe impedir que abra la ventana.
@@ -642,6 +644,68 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             _newsOverlay.ZoomFactor = webZoom;
     }
 
+    private async Task InitializeNdiSafeAsync()
+    {
+        try
+        {
+            await Task.Run(RefreshNdiSources);
+        }
+        catch (Exception ex)
+        {
+            Log("NDI INICIALIZACIÓN ERROR: " + ex);
+            NdiRuntimeStatus.Text = "NDI ERROR: " + ex.Message;
+        }
+    }
+
+    private void NdiRefresh_Click(object sender, RoutedEventArgs e)
+    {
+        _ = RefreshNdiSourcesAsync();
+    }
+
+    private async Task RefreshNdiSourcesAsync()
+    {
+        try
+        {
+            NdiRuntimeStatus.Text = "NDI: buscando fuentes...";
+            await Task.Run(RefreshNdiSources);
+        }
+        catch (Exception ex)
+        {
+            Log("NDI REFRESH ERROR: " + ex);
+            NdiRuntimeStatus.Text = "NDI ERROR: " + ex.Message;
+        }
+    }
+
+    private void RefreshNdiSources()
+    {
+        var available = _ndiService.Initialize();
+        if (!available)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                NdiSourceCombo.ItemsSource = null;
+                NdiRuntimeStatus.Text = "NDI: Runtime no encontrado";
+            });
+            return;
+        }
+
+        var sources = _ndiService.RefreshSources();
+
+        Dispatcher.Invoke(() =>
+        {
+            NdiSourceCombo.ItemsSource = sources;
+            if (sources.Count > 0)
+                NdiSourceCombo.SelectedIndex = 0;
+
+            var runtime = Path.GetFileName(_ndiService.RuntimePath ?? "NDI Runtime");
+            NdiRuntimeStatus.Text = sources.Count == 0
+                ? $"NDI: Runtime OK ({runtime}) — sin fuentes detectadas"
+                : $"NDI: {sources.Count} fuente(s) detectada(s) — {runtime}";
+
+            Log(NdiRuntimeStatus.Text);
+        });
+    }
+
     private void Log(string message)
     {
         try { File.AppendAllText(_logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}"); }
@@ -699,5 +763,6 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     {
         _cycleTimer.Stop();
         await StopCurrentAsync();
+        _ndiService.Dispose();
     }
 }
