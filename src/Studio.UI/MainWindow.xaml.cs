@@ -1080,9 +1080,15 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         {
             try
             {
-                var climate = await CaptureWebViewFrameAsync(_climateOverlay, ClimateHost.Visibility == Visibility.Visible);
-                var logo = await CaptureWebViewFrameAsync(_logoOverlay, LogoHost.Visibility == Visibility.Visible);
-                var news = await CaptureWebViewFrameAsync(_newsOverlay, NewsHost.Visibility == Visibility.Visible);
+                var visibility = await Dispatcher.InvokeAsync(() => new[]
+                {
+                    ClimateHost.Visibility == Visibility.Visible,
+                    LogoHost.Visibility == Visibility.Visible,
+                    NewsHost.Visibility == Visibility.Visible
+                });
+                var climate = await CaptureWebViewFrameAsync(_climateOverlay, visibility[0]);
+                var logo = await CaptureWebViewFrameAsync(_logoOverlay, visibility[1]);
+                var news = await CaptureWebViewFrameAsync(_newsOverlay, visibility[2]);
                 lock (_overlayFrameLock)
                 {
                     _climateFrame = climate;
@@ -1119,9 +1125,14 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         try
         {
             using var stream = new MemoryStream();
-            await Dispatcher.InvokeAsync(async () =>
-                await view.CoreWebView2.CapturePreviewAsync(
-                    CoreWebView2CapturePreviewImageFormat.Png, stream));
+            var captureTask = await Dispatcher.InvokeAsync(() =>
+            {
+                if (view.CoreWebView2 is null) return Task.CompletedTask;
+                return view.CoreWebView2.CapturePreviewAsync(
+                    CoreWebView2CapturePreviewImageFormat.Png, stream);
+            });
+            await captureTask;
+            if (stream.Length == 0) return null;
             stream.Position = 0;
             var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
             if (decoder.Frames.Count == 0) return null;
