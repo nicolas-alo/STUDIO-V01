@@ -217,7 +217,7 @@ public sealed class NdiService : IDisposable
         return false;
     }
 
-    public IReadOnlyList<NdiSourceInfo> RefreshSources(uint waitMs = 250)
+    public IReadOnlyList<NdiSourceInfo> RefreshSources(uint waitMs = 2000)
     {
         if (!Initialize())
             return [];
