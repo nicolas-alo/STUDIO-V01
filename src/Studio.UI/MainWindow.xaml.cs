@@ -71,6 +71,11 @@ public partial class MainWindow : Window
     private readonly StreamOutputService _rtmpOutput = new();
     private bool _srtFirstFrameReported;
     private bool _rtmpFirstFrameReported;
+    private readonly object _overlayFrameLock = new();
+    private byte[]? _climateFrame;
+    private byte[]? _logoFrame;
+    private byte[]? _newsFrame;
+    private CancellationTokenSource? _htmlCaptureCts;
 
     public MainWindow()
     {
@@ -298,6 +303,10 @@ public partial class MainWindow : Window
         var slot = GetActiveOverlaySlot();
         if (slot >= 0)
             await ApplyActiveOverlaysAsync(slot);
+
+        // Los overlays HTML se rasterizan en segundo plano y se mezclan con cada
+        // cuadro del programa antes de distribuirlo a NDI, SRT y YouTube.
+        _ = Task.Run(CaptureOverlayFramesLoopAsync);
     }
 
     private async Task InitializeOverlayWebViewAsync(WebView2? view, string url)
@@ -397,6 +406,11 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             ");
             _htmlPreview.Source = new Uri(url);
             ResizeProgramPreview();
+
+            _htmlCaptureCts?.Cancel();
+            _htmlCaptureCts?.Dispose();
+            _htmlCaptureCts = new CancellationTokenSource();
+            _ = Task.Run(() => CaptureHtmlProgramLoopAsync(_htmlCaptureCts.Token));
         }
         catch (Exception ex)
         {
@@ -988,13 +1002,14 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     {
         if (frame.Length < OutputWidth * OutputHeight * 4) return;
 
+        var composedFrame = ComposeProgramFrame(frame);
         lock (_programFrameLock)
         {
             _programFrameSequence++;
             try
             {
                 if (_ndiService.IsSenderActive)
-                    _ndiService.SendBgrx(frame, OutputWidth, OutputHeight, OutputWidth * 4);
+                    _ndiService.SendBgrx(composedFrame, OutputWidth, OutputHeight, OutputWidth * 4);
             }
             catch (Exception ex)
             {
@@ -1002,8 +1017,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                 _ = Dispatcher.BeginInvoke(() => NdiOutputStatus.Text = "NDI SALIDA ERROR — " + ex.Message);
             }
 
-            _srtOutput.WriteFrame(frame);
-            _rtmpOutput.WriteFrame(frame);
+            _srtOutput.WriteFrame(composedFrame);
+            _rtmpOutput.WriteFrame(composedFrame);
         }
 
         if (_srtOutput.IsActive && !_srtFirstFrameReported)
@@ -1015,6 +1030,114 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         {
             _rtmpFirstFrameReported = true;
             _ = Dispatcher.BeginInvoke(() => YoutubeStatusText.Text = "YouTube RTMP: enviando cuadros del programa");
+        }
+    }
+
+    private byte[] ComposeProgramFrame(byte[] source)
+    {
+        var output = new byte[OutputWidth * OutputHeight * 4];
+        Buffer.BlockCopy(source, 0, output, 0, output.Length);
+
+        byte[]? climate, logo, news;
+        lock (_overlayFrameLock)
+        {
+            climate = _climateFrame;
+            logo = _logoFrame;
+            news = _newsFrame;
+        }
+
+        BlendOverlay(output, climate);
+        BlendOverlay(output, news);
+        BlendOverlay(output, logo);
+        return output;
+    }
+
+    private static void BlendOverlay(byte[] destination, byte[]? overlay)
+    {
+        if (overlay is null || overlay.Length < destination.Length) return;
+        for (var i = 0; i < destination.Length; i += 4)
+        {
+            var alpha = overlay[i + 3];
+            if (alpha == 0) continue;
+            if (alpha == 255)
+            {
+                destination[i] = overlay[i];
+                destination[i + 1] = overlay[i + 1];
+                destination[i + 2] = overlay[i + 2];
+                continue;
+            }
+
+            var inverse = 255 - alpha;
+            destination[i] = (byte)((overlay[i] * alpha + destination[i] * inverse) / 255);
+            destination[i + 1] = (byte)((overlay[i + 1] * alpha + destination[i + 1] * inverse) / 255);
+            destination[i + 2] = (byte)((overlay[i + 2] * alpha + destination[i + 2] * inverse) / 255);
+        }
+    }
+
+    private async Task CaptureOverlayFramesLoopAsync()
+    {
+        while (!Dispatcher.HasShutdownStarted)
+        {
+            try
+            {
+                var climate = await CaptureWebViewFrameAsync(_climateOverlay, ClimateHost.Visibility == Visibility.Visible);
+                var logo = await CaptureWebViewFrameAsync(_logoOverlay, LogoHost.Visibility == Visibility.Visible);
+                var news = await CaptureWebViewFrameAsync(_newsOverlay, NewsHost.Visibility == Visibility.Visible);
+                lock (_overlayFrameLock)
+                {
+                    _climateFrame = climate;
+                    _logoFrame = logo;
+                    _newsFrame = news;
+                }
+            }
+            catch (Exception ex) { Log("CAPTURA OVERLAYS ERROR: " + ex.Message); }
+
+            await Task.Delay(200);
+        }
+    }
+
+    private async Task CaptureHtmlProgramLoopAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                var frame = await CaptureWebViewFrameAsync(_htmlPreview, true);
+                if (frame is not null)
+                    PublishProgramFrame(frame);
+            }
+            catch (OperationCanceledException) { break; }
+            catch (Exception ex) { Log("CAPTURA HTML PROGRAMA ERROR: " + ex.Message); }
+            await Task.Delay(100, token);
+        }
+    }
+
+    private async Task<byte[]?> CaptureWebViewFrameAsync(WebView2? view, bool enabled)
+    {
+        if (!enabled || view?.CoreWebView2 is null) return null;
+
+        try
+        {
+            using var stream = new MemoryStream();
+            await Dispatcher.InvokeAsync(async () =>
+                await view.CoreWebView2.CapturePreviewAsync(
+                    CoreWebView2CapturePreviewImageFormat.Png, stream));
+            stream.Position = 0;
+            var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+            if (decoder.Frames.Count == 0) return null;
+
+            var bgra = new FormatConvertedBitmap(decoder.Frames[0],
+                System.Windows.Media.PixelFormats.Bgra32, null, 0);
+            var scaled = new TransformedBitmap(bgra, new System.Windows.Media.ScaleTransform(
+                OutputWidth / (double)bgra.PixelWidth, OutputHeight / (double)bgra.PixelHeight));
+            var pixels = new byte[OutputWidth * OutputHeight * 4];
+            scaled.CopyPixels(pixels, OutputWidth * 4, 0);
+            return pixels;
+        }
+        catch (Exception ex)
+        {
+            Log("CAPTURA WEBVIEW ERROR: " + ex.Message);
+            return null;
         }
     }
 
