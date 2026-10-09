@@ -1055,7 +1055,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         if (string.IsNullOrWhiteSpace(host) || !int.TryParse(SrtPortBox.Text.Trim(), out var port) || port < 1 || port > 65535) { SrtStatusText.Text = "Ingresá el host receptor y un puerto válido (1–65535)."; return; }
         var localIp = SrtLocalIpCombo.SelectedItem?.ToString() ?? "";
         var url = "srt://" + host + ":" + port + "?mode=caller&transtype=live";
-        if (!string.IsNullOrWhiteSpace(localIp)) url += "&localaddr=" + Uri.EscapeDataString(localIp);
+
         if (_config is not null) { _config.SrtHost = host; _config.SrtPort = port; _config.SrtLocalIp = localIp; SaveConfig(); }
         StartStreamOutput(_srtOutput, url, false);
     }
