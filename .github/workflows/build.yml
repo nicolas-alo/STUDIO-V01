@@ -54,6 +54,14 @@ jobs:
       - name: Zip package
         shell: pwsh
         run: Compress-Archive -Path package/* -DestinationPath STUDIO-V01-ETAPA2-win-x64.zip -Force
+      - name: Keep package available after build
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path STUDIO-V01-ETAPA2-win-x64.zip) {
+            New-Item -ItemType Directory -Force -Path $env:RUNNER_TEMP/studio-package | Out-Null
+            Copy-Item STUDIO-V01-ETAPA2-win-x64.zip $env:RUNNER_TEMP/studio-package/
+          }
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
