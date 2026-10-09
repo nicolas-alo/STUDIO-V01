@@ -769,6 +769,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private async void MainWindow_KeyDown(object sender, KeyEventArgs e)
     {
+        if (Keyboard.FocusedElement is TextBoxBase or PasswordBox or ComboBox) return;
         if (e.Key == Key.D0 || e.Key == Key.NumPad0)
         {
             if (!_ndiInputOnAir && NdiSourceCombo.SelectedItem is NdiSourceInfo)
@@ -878,6 +879,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                         System.Windows.Media.PixelFormats.Bgr32,
                         null, pixels, stride);
                     bitmap.Freeze();
+                    WriteStreamFrame(pixels);
 
                     await Dispatcher.InvokeAsync(() =>
                     {
