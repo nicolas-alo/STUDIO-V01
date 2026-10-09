@@ -1,5 +1,9 @@
 name: Build STUDIO V01
 
+concurrency:
+  group: studio-v01-build-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [ main ]
@@ -53,5 +57,6 @@ jobs:
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: STUDIO-V01-ETAPA2-win-x64
+          name: STUDIO-V01-latest-win-x64
           path: STUDIO-V01-ETAPA2-win-x64.zip
+          retention-days: 2
