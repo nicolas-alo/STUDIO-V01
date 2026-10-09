@@ -179,7 +179,7 @@
                                 <TextBlock Text="SALIDA NDI" Foreground="#DDDDDD" VerticalAlignment="Center" FontSize="12" Margin="2,0,8,0"/>
                                 <TextBox x:Name="NdiOutputNameBox" Grid.Column="1" Height="28" Text="STUDIO V01" Padding="6,3" Background="#181818" Foreground="White" BorderBrush="#3A3A3A" TextChanged="NdiOutputNameBox_TextChanged"/>
                             </Grid>
-                            <StackPanel Grid.Row="4" Margin="0,7,0,0">
+                            <StackPanel Grid.Row="4" Margin="0,7,0,0" Visibility="Collapsed">
                                 <TextBlock Text="SALIDAS SRT / YOUTUBE RTMP" Foreground="White" FontSize="13" FontWeight="Bold" Margin="2,0,0,5"/>
                                 <TextBox x:Name="SrtUrlBox" Height="27" Margin="0,0,0,4" Padding="5,3" Background="#181818" Foreground="White" BorderBrush="#3A3A3A" ToolTip="URL SRT completa"/>
                                 <Grid Margin="0,0,0,5">
@@ -240,22 +240,56 @@
             </StackPanel></Grid>
         </TabItem>
         <TabItem Header="STINGERS" Background="#161616" Foreground="White">
-            <Grid Background="#101010" Margin="12"><StackPanel>
-                <TextBlock Text="STINGERS 0 / 5" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
-                <TextBlock Text="0: transición hacia NDI. 5: retorno al programa automático. La carga de secuencias reemplazables y las transiciones visuales quedan pendientes de integración." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap"/>
-            </StackPanel></Grid>
+            <ScrollViewer Background="#101010" VerticalScrollBarVisibility="Auto"><StackPanel Margin="18" MaxWidth="1000" HorizontalAlignment="Left">
+<TextBlock Text="STINGERS · TRANSICIONES" FontSize="24" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
+<TextBlock Text="Cargá un ZIP o RAR con la secuencia de imágenes. Se copiará y extraerá en la carpeta Stingers." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap" Margin="0,0,0,18"/>
+<Border Background="#191919" BorderBrush="#383838" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12"><StackPanel>
+<TextBlock Text="STINGER 0 · ENTRADA A NDI" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,0,0,8"/>
+<DockPanel><Button Content="SELECCIONAR ZIP / RAR" Width="190" Height="36" Click="Stinger0Browse_Click" DockPanel.Dock="Right" Margin="8,0,0,0"/><TextBox x:Name="Stinger0PathBox" Height="36" Padding="8" Background="#101010" Foreground="White" BorderBrush="#444444" IsReadOnly="True" VerticalContentAlignment="Center"/></DockPanel>
+<TextBlock x:Name="Stinger0StatusText" Text="Sin secuencia cargada" Foreground="#AAAAAA" Margin="0,8,0,0" TextWrapping="Wrap"/>
+</StackPanel></Border>
+<Border Background="#191919" BorderBrush="#383838" BorderThickness="1" CornerRadius="8" Padding="16"><StackPanel>
+<TextBlock Text="STINGER 5 · REGRESO AL PROGRAMA" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,0,0,8"/>
+<DockPanel><Button Content="SELECCIONAR ZIP / RAR" Width="190" Height="36" Click="Stinger5Browse_Click" DockPanel.Dock="Right" Margin="8,0,0,0"/><TextBox x:Name="Stinger5PathBox" Height="36" Padding="8" Background="#101010" Foreground="White" BorderBrush="#444444" IsReadOnly="True" VerticalContentAlignment="Center"/></DockPanel>
+<TextBlock x:Name="Stinger5StatusText" Text="Sin secuencia cargada" Foreground="#AAAAAA" Margin="0,8,0,0" TextWrapping="Wrap"/>
+</StackPanel></Border></StackPanel></ScrollViewer>
         </TabItem>
         <TabItem Header="SALIDAS" Background="#161616" Foreground="White">
-            <Grid Background="#101010" Margin="12"><StackPanel>
-                <TextBlock Text="SALIDAS INDEPENDIENTES" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
-                <TextBlock Text="NDI, SRT Caller y YouTube RTMP deben ser salidas independientes, alimentadas por la composición final 1920×1080 a 29,97 fps. La interfaz actual se conserva por compatibilidad mientras se prepara la integración correcta." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap"/>
-            </StackPanel></Grid>
+            <ScrollViewer Background="#101010" VerticalScrollBarVisibility="Auto"><StackPanel Margin="18" MaxWidth="1050" HorizontalAlignment="Left">
+<TextBlock Text="SALIDAS INDEPENDIENTES" FontSize="24" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+<TextBlock Text="Configurá cada salida por separado. SRT trabaja como Caller hacia un receptor Listener; YouTube usa RTMP/RTMPS y su clave propia." Foreground="#BBBBBB" FontSize="14" Margin="0,0,0,18"/>
+<Border Background="#191919" BorderBrush="#383838" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12"><StackPanel>
+<TextBlock Text="NDI · SALIDA DE RED" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
+<DockPanel><Button Content="APLICAR NOMBRE" Width="150" Height="36" Click="ApplyNdiOutput_Click" DockPanel.Dock="Right" Margin="8,0,0,0"/><TextBox x:Name="NdiOutputNameBox2" Height="36" Padding="8" Text="STUDIO V01" Background="#101010" Foreground="White" BorderBrush="#444444" VerticalContentAlignment="Center"/></DockPanel>
+<TextBlock Text="La selección del receptor NDI sigue en PROGRAMA. La salida NDI publica el nombre indicado." Foreground="#AAAAAA" Margin="0,8,0,0" TextWrapping="Wrap"/>
+</StackPanel></Border>
+<Border Background="#191919" BorderBrush="#383838" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12"><StackPanel>
+<TextBlock Text="SRT CALLER" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,0,0,12"/>
+<TextBlock Text="IP local de esta PC" Foreground="#BBBBBB" Margin="0,0,0,5"/><ComboBox x:Name="SrtLocalIpCombo" Height="34" Margin="0,0,0,10" Background="#101010" Foreground="White"/>
+<Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="IP / host del receptor Listener" Foreground="#BBBBBB" Margin="0,0,0,5"/><TextBox x:Name="SrtHostBox" Height="34" Padding="8" Background="#101010" Foreground="White" BorderBrush="#444444" VerticalContentAlignment="Center"/></StackPanel><StackPanel Grid.Column="1" Margin="10,0,0,0"><TextBlock Text="Puerto remoto" Foreground="#BBBBBB" Margin="0,0,0,5"/><TextBox x:Name="SrtPortBox" Height="34" Padding="8" Background="#101010" Foreground="White" BorderBrush="#444444" VerticalContentAlignment="Center" Text="9000"/></StackPanel></Grid>
+<TextBlock Text="Modo CALLER. En la PC receptora, configurá SRT Listener con el mismo puerto." Foreground="#AAAAAA" TextWrapping="Wrap" Margin="0,0,0,10"/>
+<DockPanel><Button x:Name="SrtStartButton2" Content="INICIAR SRT CALLER" Width="190" Height="38" Click="SrtStart_Click" DockPanel.Dock="Right" Margin="8,0,0,0"/><Button x:Name="SrtStopButton2" Content="DETENER SRT" Width="120" Height="38" Click="SrtStop_Click" IsEnabled="False" DockPanel.Dock="Right" Margin="0,0,8,0"/><TextBlock x:Name="SrtStatusText" Text="SRT: detenido" Foreground="#AAAAAA" VerticalAlignment="Center"/></DockPanel>
+</StackPanel></Border>
+<Border Background="#191919" BorderBrush="#383838" BorderThickness="1" CornerRadius="8" Padding="16"><StackPanel>
+<TextBlock Text="YOUTUBE · RTMP / RTMPS" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,0,0,12"/>
+<TextBlock Text="URL del servidor" Foreground="#BBBBBB" Margin="0,0,0,5"/><TextBox x:Name="YoutubeServerBox" Height="34" Padding="8" Background="#101010" Foreground="White" BorderBrush="#444444" Text="rtmps://a.rtmps.youtube.com/live2" VerticalContentAlignment="Center" Margin="0,0,0,10"/>
+<TextBlock Text="Clave de transmisión" Foreground="#BBBBBB" Margin="0,0,0,5"/><PasswordBox x:Name="YoutubeKeyBox" Height="34" Padding="8" Background="#101010" Foreground="White" BorderBrush="#444444" Margin="0,0,0,10"/>
+<DockPanel><Button x:Name="RtmpStartButton2" Content="INICIAR YOUTUBE" Width="170" Height="38" Click="RtmpStart_Click" DockPanel.Dock="Right" Margin="8,0,0,0"/><Button x:Name="RtmpStopButton2" Content="DETENER" Width="110" Height="38" Click="RtmpStop_Click" IsEnabled="False" DockPanel.Dock="Right" Margin="0,0,8,0"/><TextBlock x:Name="YoutubeStatusText" Text="YouTube RTMP: detenido" Foreground="#AAAAAA" VerticalAlignment="Center"/></DockPanel>
+<TextBlock Text="La clave se muestra oculta. No la publiques ni la compartas." Foreground="#AAAAAA" FontSize="12" Margin="0,8,0,0"/>
+</StackPanel></Border>
+<TextBlock Text="Aviso técnico: esta interfaz configura las salidas. Para emitir la composición final completa (cámaras, HTML, overlays y audio), aún falta integrar el mezclador de programa en el flujo de salida." Foreground="#E8C66A" TextWrapping="Wrap" Margin="0,14,0,0"/>
+</StackPanel></ScrollViewer>
         </TabItem>
         <TabItem Header="SONIDO / PLAYLIST" Background="#161616" Foreground="White">
-            <Grid Background="#101010" Margin="12"><StackPanel>
-                <TextBlock Text="SONIDO Y PLAYLIST" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
-                <TextBlock Text="El reproductor M3U8 existente sigue disponible en PROGRAMA. La edición de playlist y el enrutamiento de las tres salidas de audio se incorporarán aquí." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap"/>
-            </StackPanel></Grid>
+            <ScrollViewer Background="#101010" VerticalScrollBarVisibility="Auto"><StackPanel Margin="18" MaxWidth="1000" HorizontalAlignment="Left">
+<TextBlock Text="SONIDO / PLAYLIST M3U8" FontSize="24" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+<TextBlock Text="Elegí el archivo de playlist desde el equipo. La ruta se guarda en la configuración local." Foreground="#BBBBBB" FontSize="14" Margin="0,0,0,18"/>
+<Border Background="#191919" BorderBrush="#383838" BorderThickness="1" CornerRadius="8" Padding="16"><StackPanel>
+<TextBlock Text="ARCHIVO DE PLAYLIST" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
+<DockPanel><Button Content="BUSCAR ARCHIVO M3U8" Width="190" Height="38" Click="M3u8Browse_Click" DockPanel.Dock="Right" Margin="8,0,0,0"/><TextBox x:Name="M3u8PathBox" Height="38" Padding="8" Background="#101010" Foreground="White" BorderBrush="#444444" IsReadOnly="True" VerticalContentAlignment="Center"/></DockPanel>
+<TextBlock x:Name="M3u8StatusText" Text="No se seleccionó archivo local." Foreground="#AAAAAA" Margin="0,10,0,0" TextWrapping="Wrap"/>
+<TextBlock Text="Nota: las playlists M3U8 locales con segmentos relativos necesitan servirse por HTTP para que el reproductor web acceda a los archivos de video." Foreground="#AAAAAA" FontSize="12" Margin="0,12,0,0" TextWrapping="Wrap"/>
+</StackPanel></Border></StackPanel></ScrollViewer>
         </TabItem>
         <TabItem Header="CÁMARAS / NDI" Background="#161616" Foreground="White">
             <Grid Background="#101010" Margin="12"><StackPanel>
