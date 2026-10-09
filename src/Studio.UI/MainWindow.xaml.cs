@@ -69,6 +69,8 @@ public partial class MainWindow : Window
     private bool _ndiInputOnAir;
     private readonly StreamOutputService _srtOutput = new();
     private readonly StreamOutputService _rtmpOutput = new();
+    private bool _srtFirstFrameReported;
+    private bool _rtmpFirstFrameReported;
 
     public MainWindow()
     {
@@ -997,6 +999,16 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     {
         _srtOutput.WriteFrame(frame);
         _rtmpOutput.WriteFrame(frame);
+        if (_srtOutput.IsActive && !_srtFirstFrameReported)
+        {
+            _srtFirstFrameReported = true;
+            Dispatcher.BeginInvoke(() => SrtStatusText.Text = "SRT Caller: enviando video");
+        }
+        if (_rtmpOutput.IsActive && !_rtmpFirstFrameReported)
+        {
+            _rtmpFirstFrameReported = true;
+            Dispatcher.BeginInvoke(() => YoutubeStatusText.Text = "YouTube RTMP: enviando video");
+        }
     }
 
     private void LoadOutputSettings()
@@ -1128,6 +1140,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private void SrtStop_Click(object sender, RoutedEventArgs e)
     {
         _srtOutput.Stop();
+        _srtFirstFrameReported = false;
         SrtStartButton2.IsEnabled = true; SrtStopButton2.IsEnabled = false; SrtStatusText.Text = "SRT Caller: detenido";
         SrtStartButton.IsEnabled = true;
         SrtStopButton.IsEnabled = false;
@@ -1137,6 +1150,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private void RtmpStop_Click(object sender, RoutedEventArgs e)
     {
         _rtmpOutput.Stop();
+        _rtmpFirstFrameReported = false;
         RtmpStartButton2.IsEnabled = true; RtmpStopButton2.IsEnabled = false; YoutubeStatusText.Text = "YouTube RTMP: detenido";
         RtmpStartButton.IsEnabled = true;
         RtmpStopButton.IsEnabled = false;
