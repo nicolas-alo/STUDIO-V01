@@ -485,19 +485,15 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                     System.Windows.Media.PixelFormats.Bgr32, null, frame, width * bpp);
                 bitmap.Freeze();
 
-                if (_ndiService.IsSenderActive)
+                byte[]? composed;
+                lock (_ndiOutputLock)
                 {
-                    lock (_ndiOutputLock)
-                    {
-                        _quadNdiFrames[slot] = frame;
-                        var composed = ComposeQuadNdiFrame();
-                        if (composed is not null)
-                        {
-                            _ndiService.SendBgrx(composed, OutputWidth, OutputHeight, OutputWidth * 4);
-                            WriteStreamFrame(composed);
-                        }
-                    }
+                    _quadNdiFrames[slot] = frame;
+                    composed = ComposeQuadNdiFrame();
+                    if (composed is not null && _ndiService.IsSenderActive)
+                        _ndiService.SendBgrx(composed, OutputWidth, OutputHeight, OutputWidth * 4);
                 }
+                if (composed is not null) WriteStreamFrame(composed);
 
                 await Dispatcher.InvokeAsync(() =>
                 {
@@ -751,6 +747,23 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         }
     }
 
+
+    private async void MainWindow_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.D0 || e.Key == Key.NumPad0)
+        {
+            if (!_ndiInputOnAir && NdiSourceCombo.SelectedItem is NdiSourceInfo)
+                NdiConnect_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (e.Key == Key.D5 || e.Key == Key.NumPad5)
+        {
+            if (_ndiInputOnAir)
+                NdiReturn_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+    }
+
     private async void NdiConnect_Click(object sender, RoutedEventArgs e)
     {
         if (NdiSourceCombo.SelectedItem is not NdiSourceInfo source)
@@ -761,6 +774,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
         try
         {
+            _cycleTimer.Stop();
             _manualSelection = true;
             _ndiInputOnAir = false;
             _index = -1;
@@ -818,6 +832,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
             Log("NDI: retorno al programa automático.");
             await ShowNextAsync();
+            _cycleTimer.Interval = TimeSpan.FromSeconds(Math.Max(1, _config?.CycleSeconds ?? 20));
+            _cycleTimer.Start();
             StatusText.Text = "PROGRAMA AL AIRE — ciclo automático";
         }
         catch (Exception ex)
