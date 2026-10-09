@@ -997,6 +997,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     // NDI, SRT y YouTube, evitando que cada salida use un camino de video diferente.
     private readonly object _programFrameLock = new();
     private long _programFrameSequence;
+    private long _lastProgramFrameTimestamp;
 
     private void PublishProgramFrame(byte[] frame)
     {
@@ -1005,6 +1006,12 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         var composedFrame = ComposeProgramFrame(frame);
         lock (_programFrameLock)
         {
+            // Limita la distribución a 29.97 fps incluso si las cuatro cámaras
+            // generan cuadros en paralelo.
+            var now = Stopwatch.GetTimestamp();
+            var minTicks = Stopwatch.Frequency * 1001L / 30000L;
+            if (now - _lastProgramFrameTimestamp < minTicks) return;
+            _lastProgramFrameTimestamp = now;
             _programFrameSequence++;
             try
             {
