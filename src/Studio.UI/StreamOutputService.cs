@@ -69,8 +69,8 @@ internal sealed class StreamOutputService : IDisposable
         lock (_gate)
         {
             if (_process is not { HasExited: false } || _input is null) return;
-            try { _input.Write(frame, 0, frame.Length); }
-            catch (Exception ex) { Status = ex.Message; StopLocked(); }
+            try { _input.Write(frame, 0, frame.Length); if (Status == "Conectando") Status = "Emitiendo video"; }
+            catch (Exception ex) { Status = "Error enviando video: " + ex.Message; StopLocked(); }
         }
     }
 
