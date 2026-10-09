@@ -511,10 +511,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                 {
                     _quadNdiFrames[slot] = frame;
                     composed = ComposeQuadNdiFrame();
-                    if (composed is not null && _ndiService.IsSenderActive)
-                        _ndiService.SendBgrx(composed, OutputWidth, OutputHeight, OutputWidth * 4);
                 }
-                if (composed is not null) WriteStreamFrame(composed);
+                if (composed is not null) PublishProgramFrame(composed);
 
                 await Dispatcher.InvokeAsync(() =>
                 {
@@ -635,21 +633,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                     System.Windows.Media.PixelFormats.Bgr32, null, frame, OutputWidth * bpp);
                 bitmap.Freeze();
 
-                if (_ndiService.IsSenderActive)
-                {
-                    try
-                    {
-                        lock (_ndiOutputLock)
-                            _ndiService.SendBgrx(frame, OutputWidth, OutputHeight, OutputWidth * bpp);
-                    }
-                    catch (Exception ndiEx)
-                    {
-                        Log("NDI SALIDA FRAME ERROR: " + ndiEx);
-                        await Dispatcher.InvokeAsync(() => NdiOutputStatus.Text = "NDI SALIDA ERROR — " + ndiEx.Message);
-                    }
-                }
-
-                WriteStreamFrame(frame);
+                PublishProgramFrame(frame);
 
                 await Dispatcher.InvokeAsync(() =>
                 {
@@ -995,21 +979,47 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     }
 
 
-    private void WriteStreamFrame(byte[] frame)
+    // Punto único de distribución del programa: la misma señal se entrega a
+    // NDI, SRT y YouTube, evitando que cada salida use un camino de video diferente.
+    private readonly object _programFrameLock = new();
+    private long _programFrameSequence;
+
+    private void PublishProgramFrame(byte[] frame)
     {
-        _srtOutput.WriteFrame(frame);
-        _rtmpOutput.WriteFrame(frame);
+        if (frame.Length < OutputWidth * OutputHeight * 4) return;
+
+        lock (_programFrameLock)
+        {
+            _programFrameSequence++;
+            try
+            {
+                if (_ndiService.IsSenderActive)
+                    _ndiService.SendBgrx(frame, OutputWidth, OutputHeight, OutputWidth * 4);
+            }
+            catch (Exception ex)
+            {
+                Log("NDI SALIDA FRAME ERROR: " + ex);
+                _ = Dispatcher.BeginInvoke(() => NdiOutputStatus.Text = "NDI SALIDA ERROR — " + ex.Message);
+            }
+
+            _srtOutput.WriteFrame(frame);
+            _rtmpOutput.WriteFrame(frame);
+        }
+
         if (_srtOutput.IsActive && !_srtFirstFrameReported)
         {
             _srtFirstFrameReported = true;
-            Dispatcher.BeginInvoke(() => SrtStatusText.Text = "SRT Caller: enviando video");
+            _ = Dispatcher.BeginInvoke(() => SrtStatusText.Text = "SRT Caller: enviando cuadros del programa");
         }
         if (_rtmpOutput.IsActive && !_rtmpFirstFrameReported)
         {
             _rtmpFirstFrameReported = true;
-            Dispatcher.BeginInvoke(() => YoutubeStatusText.Text = "YouTube RTMP: enviando video");
+            _ = Dispatcher.BeginInvoke(() => YoutubeStatusText.Text = "YouTube RTMP: enviando cuadros del programa");
         }
     }
+
+    // Adaptador para los lectores que aún usan el nombre anterior.
+    private void WriteStreamFrame(byte[] frame) => PublishProgramFrame(frame);
 
     private void LoadOutputSettings()
     {
