@@ -879,7 +879,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                         System.Windows.Media.PixelFormats.Bgr32,
                         null, pixels, stride);
                     bitmap.Freeze();
-                    WriteStreamFrame(pixels);
+                    var outputFrame = NormalizeFrame(pixels, width, height, stride);
+                    WriteStreamFrame(outputFrame);
 
                     await Dispatcher.InvokeAsync(() =>
                     {
@@ -904,6 +905,20 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                 try { await Task.Delay(100, token); } catch { break; }
             }
         }
+    }
+
+    private static byte[] NormalizeFrame(byte[] pixels, int width, int height, int stride)
+    {
+        if (width == OutputWidth && height == OutputHeight && stride == OutputWidth * 4)
+            return pixels;
+        var source = BitmapSource.Create(width, height, 96, 96,
+            System.Windows.Media.PixelFormats.Bgr32, null, pixels, stride);
+        var scaled = new System.Windows.Media.Imaging.TransformedBitmap(source,
+            new System.Windows.Media.ScaleTransform(OutputWidth / (double)width, OutputHeight / (double)height));
+        scaled.Freeze();
+        var output = new byte[OutputWidth * OutputHeight * 4];
+        scaled.CopyPixels(output, OutputWidth * 4, 0);
+        return output;
     }
 
     private void NdiRefresh_Click(object sender, RoutedEventArgs e)
