@@ -31,7 +31,9 @@
         </Style>
     </Window.Resources>
 
-    <Grid Background="#080808" Margin="10">
+    <TabControl Background="#080808" Foreground="White" BorderBrush="#303030" Padding="4">
+        <TabItem Header="PROGRAMA" Background="#161616" Foreground="White">
+        <Grid Background="#080808" Margin="10">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="300"/>
             <ColumnDefinition Width="*"/>
@@ -230,6 +232,44 @@
             </Grid>
         </Border>
     </Grid>
+        </TabItem>
+        <TabItem Header="OVERLAYS" Background="#161616" Foreground="White">
+            <Grid Background="#101010" Margin="12"><StackPanel>
+                <TextBlock Text="OVERLAYS DEL PROGRAMA" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
+                <TextBlock Text="Clima, mosca y noticias. Los controles por fuente siguen en PROGRAMA. La posición y el tamaño individuales se incorporarán en esta pestaña." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap"/>
+            </StackPanel></Grid>
+        </TabItem>
+        <TabItem Header="STINGERS" Background="#161616" Foreground="White">
+            <Grid Background="#101010" Margin="12"><StackPanel>
+                <TextBlock Text="STINGERS 0 / 5" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
+                <TextBlock Text="0: transición hacia NDI. 5: retorno al programa automático. La carga de secuencias reemplazables y las transiciones visuales quedan pendientes de integración." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap"/>
+            </StackPanel></Grid>
+        </TabItem>
+        <TabItem Header="SALIDAS" Background="#161616" Foreground="White">
+            <Grid Background="#101010" Margin="12"><StackPanel>
+                <TextBlock Text="SALIDAS INDEPENDIENTES" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
+                <TextBlock Text="NDI, SRT Caller y YouTube RTMP deben ser salidas independientes, alimentadas por la composición final 1920×1080 a 29,97 fps. La interfaz actual se conserva por compatibilidad mientras se prepara la integración correcta." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap"/>
+            </StackPanel></Grid>
+        </TabItem>
+        <TabItem Header="SONIDO / PLAYLIST" Background="#161616" Foreground="White">
+            <Grid Background="#101010" Margin="12"><StackPanel>
+                <TextBlock Text="SONIDO Y PLAYLIST" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
+                <TextBlock Text="El reproductor M3U8 existente sigue disponible en PROGRAMA. La edición de playlist y el enrutamiento de las tres salidas de audio se incorporarán aquí." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap"/>
+            </StackPanel></Grid>
+        </TabItem>
+        <TabItem Header="CÁMARAS / NDI" Background="#161616" Foreground="White">
+            <Grid Background="#101010" Margin="12"><StackPanel>
+                <TextBlock Text="CÁMARAS Y NDI" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
+                <TextBlock Text="La detección NDI y el control actuales siguen en PROGRAMA. La configuración por cámara y las pruebas de conexión se incorporarán aquí." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap"/>
+            </StackPanel></Grid>
+        </TabItem>
+        <TabItem Header="CONFIGURACIÓN" Background="#161616" Foreground="White">
+            <Grid Background="#101010" Margin="12"><StackPanel>
+                <TextBlock Text="CONFIGURACIÓN GENERAL" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
+                <TextBlock Text="La configuración editable deberá guardar cámaras, URLs RTSP, fuentes HTML, duración del ciclo, overlays y salidas en un archivo local, sin recompilar. Esta primera etapa organiza las pestañas sin simular funciones que todavía no guardan datos." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap"/>
+            </StackPanel></Grid>
+        </TabItem>
+    </TabControl>
 
 
 </Window>
