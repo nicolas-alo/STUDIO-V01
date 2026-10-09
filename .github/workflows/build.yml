@@ -5,8 +5,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
-  actions: write
+  contents: write
 
 on:
   push:
@@ -58,32 +57,31 @@ jobs:
       - name: Zip package
         shell: pwsh
         run: Compress-Archive -Path package/* -DestinationPath STUDIO-V01-ETAPA2-win-x64.zip -Force
-      - name: Keep package available after build
-        if: always()
-        shell: pwsh
-        run: |
-          if (Test-Path STUDIO-V01-ETAPA2-win-x64.zip) {
-            New-Item -ItemType Directory -Force -Path $env:RUNNER_TEMP/studio-package | Out-Null
-            Copy-Item STUDIO-V01-ETAPA2-win-x64.zip $env:RUNNER_TEMP/studio-package/
-          }
-      - name: Clear previous build artifacts to free storage
+      - name: Publish latest ZIP as GitHub Release asset
         if: github.event_name == 'push'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json"; "X-GitHub-Api-Version" = "2022-11-28" }
-          $uri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/artifacts?per_page=100"
-          $response = Invoke-RestMethod -Headers $headers -Uri $uri -Method Get
-          foreach ($artifact in $response.artifacts) {
-            if (-not $artifact.expired) {
-              Write-Host "Eliminando artefacto anterior $($artifact.id) ($($artifact.name), $($artifact.size_in_bytes) bytes)"
-              Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/artifacts/$($artifact.id)" -Method Delete
-            }
+          $repo = $env:GITHUB_REPOSITORY
+          $tag = "latest-build"
+          $api = "https://api.github.com/repos/$repo"
+          $old = $null
+          try { $old = Invoke-RestMethod -Headers $headers -Uri "$api/releases/tags/$tag" -Method Get } catch {}
+          if ($old) {
+            Invoke-RestMethod -Headers $headers -Uri "$api/releases/$($old.id)" -Method Delete
+            try { Invoke-RestMethod -Headers $headers -Uri "$api/git/refs/tags/$tag" -Method Delete } catch {}
           }
-      - name: Upload package
-        uses: actions/upload-artifact@v4
-        with:
-          name: STUDIO-V01-latest-win-x64
-          path: STUDIO-V01-ETAPA2-win-x64.zip
-          retention-days: 2
+          $releaseBody = @{
+            tag_name = $tag
+            target_commitish = $env:GITHUB_SHA
+            name = "STUDIO V01 — última compilación"
+            body = "Paquete compilado automáticamente desde el commit $env:GITHUB_SHA. Windows x64."
+            draft = $false
+            prerelease = $true
+          } | ConvertTo-Json
+          $release = Invoke-RestMethod -Headers $headers -Uri "$api/releases" -Method Post -Body $releaseBody -ContentType "application/json"
+          $assetUri = "https://uploads.github.com/repos/$repo/releases/$($release.id)/assets?name=STUDIO-V01-latest-win-x64.zip"
+          Invoke-RestMethod -Headers $headers -Uri $assetUri -Method Post -InFile "STUDIO-V01-ETAPA2-win-x64.zip" -ContentType "application/zip"
+          Write-Host "Paquete publicado: $($release.html_url)"
