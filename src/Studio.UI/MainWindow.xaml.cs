@@ -1120,7 +1120,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private async Task<byte[]?> CaptureWebViewFrameAsync(WebView2? view, bool enabled)
     {
-        if (!enabled || view?.CoreWebView2 is null) return null;
+        if (!enabled || view is null) return null;
 
         try
         {
