@@ -1,6 +1,12 @@
 using Microsoft.Web.WebView2.Wpf;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using Microsoft.Win32;
+using SharpCompress.Archives;
+using SharpCompress.Common;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
@@ -23,6 +29,11 @@ public partial class MainWindow : Window
     {
         public int CycleSeconds { get; set; } = 20;
         public string M3u8Url { get; set; } = "";
+        public string SrtHost { get; set; } = "";
+        public int SrtPort { get; set; } = 9000;
+        public string SrtLocalIp { get; set; } = "";
+        public string YoutubeServer { get; set; } = "rtmps://a.rtmps.youtube.com/live2";
+        public string YoutubeKey { get; set; } = "";
         public List<Source> Sources { get; set; } = [];
     }
 
@@ -95,6 +106,7 @@ public partial class MainWindow : Window
                 return;
             }
 
+            LoadOutputSettings();
             _cycleTimer.Interval = TimeSpan.FromSeconds(Math.Max(1, _config.CycleSeconds));
             _cycleTimer.Start();
 
@@ -341,6 +353,7 @@ public partial class MainWindow : Window
             _audioPlayer.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 11, 11, 11);
 
             var configured = _config?.M3u8Url?.Trim() ?? "";
+            if (File.Exists(configured)) configured = new Uri(configured).AbsoluteUri;
             var jsonUrl = JsonSerializer.Serialize(configured);
             var html = @"<!doctype html><html><body style='margin:0;background:#0b0b0b;color:#fff;font-family:Arial;overflow:hidden'>
 <div style='padding:4px'><audio id='a' controls style='width:100%'></audio><div id='s' style='font-size:11px;color:#aaa'>M3U8 no configurado</div></div>
@@ -963,11 +976,86 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         _rtmpOutput.WriteFrame(frame);
     }
 
-    private void SrtStart_Click(object sender, RoutedEventArgs e) =>
-        StartStreamOutput(_srtOutput, SrtUrlBox.Text.Trim(), false);
+    private void LoadOutputSettings()
+    {
+        if (_config is null) return;
+        YoutubeServerBox.Text = string.IsNullOrWhiteSpace(_config.YoutubeServer) ? "rtmps://a.rtmps.youtube.com/live2" : _config.YoutubeServer;
+        YoutubeKeyBox.Password = _config.YoutubeKey ?? "";
+        SrtHostBox.Text = _config.SrtHost ?? "";
+        SrtPortBox.Text = (_config.SrtPort > 0 ? _config.SrtPort : 9000).ToString();
+        RefreshLocalIpAddresses();
+        if (!string.IsNullOrWhiteSpace(_config.SrtLocalIp)) SrtLocalIpCombo.SelectedItem = _config.SrtLocalIp;
+        NdiOutputNameBox2.Text = NdiOutputNameBox.Text;
+        if (!string.IsNullOrWhiteSpace(_config.M3u8Url)) { M3u8PathBox.Text = _config.M3u8Url; M3u8StatusText.Text = File.Exists(_config.M3u8Url) ? "Archivo local configurado." : "URL/ruta configurada."; }
+    }
 
-    private void RtmpStart_Click(object sender, RoutedEventArgs e) =>
-        StartStreamOutput(_rtmpOutput, RtmpUrlBox.Text.Trim(), true);
+    private void RefreshLocalIpAddresses()
+    {
+        var ips = NetworkInterface.GetAllNetworkInterfaces().Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback).SelectMany(n => n.GetIPProperties().UnicastAddresses).Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a.Address)).Select(a => a.Address.ToString()).Distinct().OrderBy(s => s).ToList();
+        SrtLocalIpCombo.ItemsSource = ips;
+        if (SrtLocalIpCombo.SelectedIndex < 0 && ips.Count > 0) SrtLocalIpCombo.SelectedIndex = 0;
+    }
+
+    private void SrtStart_Click(object sender, RoutedEventArgs e)
+    {
+        var host = SrtHostBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(host) || !int.TryParse(SrtPortBox.Text.Trim(), out var port) || port < 1 || port > 65535) { SrtStatusText.Text = "Ingresá el host receptor y un puerto válido (1–65535)."; return; }
+        var localIp = SrtLocalIpCombo.SelectedItem?.ToString() ?? "";
+        var url = "srt://" + host + ":" + port + "?mode=caller&transtype=live";
+        if (!string.IsNullOrWhiteSpace(localIp)) url += "&localip=" + Uri.EscapeDataString(localIp);
+        if (_config is not null) { _config.SrtHost = host; _config.SrtPort = port; _config.SrtLocalIp = localIp; SaveConfig(); }
+        StartStreamOutput(_srtOutput, url, false);
+    }
+
+    private void RtmpStart_Click(object sender, RoutedEventArgs e)
+    {
+        var server = YoutubeServerBox.Text.Trim().TrimEnd((char)47);
+        var key = YoutubeKeyBox.Password.Trim();
+        if (string.IsNullOrWhiteSpace(server) || string.IsNullOrWhiteSpace(key)) { YoutubeStatusText.Text = "Ingresá la URL del servidor y la clave de transmisión."; return; }
+        if (_config is not null) { _config.YoutubeServer = server; _config.YoutubeKey = key; SaveConfig(); }
+        StartStreamOutput(_rtmpOutput, server + "/" + key, true);
+    }
+
+    private void SaveConfig()
+    {
+        try { if (_config is not null) File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "config.local.json"), JsonSerializer.Serialize(_config, new JsonSerializerOptions { WriteIndented = true })); }
+        catch (Exception ex) { Log("No se pudo guardar configuración: " + ex.Message); }
+    }
+
+    private void ApplyNdiOutput_Click(object sender, RoutedEventArgs e) => NdiOutputNameBox.Text = string.IsNullOrWhiteSpace(NdiOutputNameBox2.Text) ? "STUDIO V01" : NdiOutputNameBox2.Text.Trim();
+
+    private async void M3u8Browse_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Title = "Seleccionar playlist M3U8", Filter = "Playlist HLS (*.m3u8)|*.m3u8|Todos los archivos (*.*)|*.*", CheckFileExists = true, Multiselect = false };
+        if (dialog.ShowDialog(this) != true) return;
+        M3u8PathBox.Text = dialog.FileName; M3u8StatusText.Text = "Archivo seleccionado: " + Path.GetFileName(dialog.FileName);
+        if (_config is not null) { _config.M3u8Url = dialog.FileName; SaveConfig(); }
+        await InitializeAudioPlayerSafeAsync();
+    }
+
+    private async void Stinger0Browse_Click(object sender, RoutedEventArgs e) => await SelectStingerArchiveAsync(Stinger0PathBox, Stinger0StatusText, "Stinger0");
+    private async void Stinger5Browse_Click(object sender, RoutedEventArgs e) => await SelectStingerArchiveAsync(Stinger5PathBox, Stinger5StatusText, "Stinger5");
+
+    private async Task SelectStingerArchiveAsync(TextBox pathBox, TextBlock status, string folderName)
+    {
+        var dialog = new OpenFileDialog { Title = "Seleccionar secuencia de imágenes (ZIP o RAR)", Filter = "Secuencias ZIP/RAR (*.zip;*.rar)|*.zip;*.rar", CheckFileExists = true, Multiselect = false };
+        if (dialog.ShowDialog(this) != true) return;
+        pathBox.Text = dialog.FileName; status.Text = "Copiando y extrayendo secuencia…";
+        try
+        {
+            await Task.Run(() =>
+            {
+                var destination = Path.Combine(AppContext.BaseDirectory, "Stingers", folderName); Directory.CreateDirectory(destination);
+                foreach (var file in Directory.EnumerateFiles(destination, "*", SearchOption.AllDirectories)) File.Delete(file);
+                using var archive = ArchiveFactory.Open(dialog.FileName);
+                foreach (var entry in archive.Entries.Where(e => !e.IsDirectory)) entry.WriteToDirectory(destination, new ExtractionOptions { ExtractFullPath = true, Overwrite = true });
+                var images = Directory.EnumerateFiles(destination, "*.*", SearchOption.AllDirectories).Count(f => new[] { ".png", ".jpg", ".jpeg", ".bmp", ".webp" }.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase));
+                if (images == 0) throw new InvalidDataException("El archivo no contiene imágenes compatibles.");
+            });
+            status.Text = "Secuencia extraída correctamente (" + folderName + "). La transición visual se integrará en la siguiente etapa."; Log(folderName + " cargado desde " + dialog.FileName);
+        }
+        catch (Exception ex) { status.Text = "No se pudo extraer: " + ex.Message; Log(folderName + " ERROR: " + ex); }
+    }
 
     private void StartStreamOutput(StreamOutputService output, string url, bool rtmp)
     {
@@ -984,10 +1072,10 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         }
         if (output.Start(ffmpeg, url, rtmp, OutputWidth, OutputHeight))
         {
-            StreamOutputStatus.Text = (rtmp ? "YOUTUBE RTMP" : "SRT") + ": iniciando • 1920×1080 • 29.97 FPS";
+            StreamOutputStatus.Text = (rtmp ? "YOUTUBE RTMP" : "SRT CALLER") + ": iniciando • 1920×1080 • 29.97 FPS";
             Log(StreamOutputStatus.Text);
-            if (rtmp) { RtmpStartButton.IsEnabled = false; RtmpStopButton.IsEnabled = true; }
-            else { SrtStartButton.IsEnabled = false; SrtStopButton.IsEnabled = true; }
+            if (rtmp) { YoutubeStatusText.Text = "YouTube RTMP: conectando…"; RtmpStartButton2.IsEnabled = false; RtmpStopButton2.IsEnabled = true; RtmpStartButton.IsEnabled = false; RtmpStopButton.IsEnabled = true; }
+            else { SrtStatusText.Text = "SRT Caller: conectando…"; SrtStartButton2.IsEnabled = false; SrtStopButton2.IsEnabled = true; SrtStartButton.IsEnabled = false; SrtStopButton.IsEnabled = true; }
         }
         else
         {
@@ -999,6 +1087,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private void SrtStop_Click(object sender, RoutedEventArgs e)
     {
         _srtOutput.Stop();
+        SrtStartButton2.IsEnabled = true; SrtStopButton2.IsEnabled = false; SrtStatusText.Text = "SRT Caller: detenido";
         SrtStartButton.IsEnabled = true;
         SrtStopButton.IsEnabled = false;
         StreamOutputStatus.Text = "SRT: detenido";
@@ -1007,6 +1096,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private void RtmpStop_Click(object sender, RoutedEventArgs e)
     {
         _rtmpOutput.Stop();
+        RtmpStartButton2.IsEnabled = true; RtmpStopButton2.IsEnabled = false; YoutubeStatusText.Text = "YouTube RTMP: detenido";
         RtmpStartButton.IsEnabled = true;
         RtmpStopButton.IsEnabled = false;
         StreamOutputStatus.Text = "YOUTUBE RTMP: detenido";
