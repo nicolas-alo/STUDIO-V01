@@ -55,6 +55,8 @@ public partial class MainWindow : Window
     private readonly object _ndiOutputLock = new();
     private readonly byte[]?[] _quadNdiFrames = new byte[4][];
     private bool _ndiInputOnAir;
+    private readonly StreamOutputService _srtOutput = new();
+    private readonly StreamOutputService _rtmpOutput = new();
 
     public MainWindow()
     {
@@ -490,7 +492,10 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                         _quadNdiFrames[slot] = frame;
                         var composed = ComposeQuadNdiFrame();
                         if (composed is not null)
+                        {
                             _ndiService.SendBgrx(composed, OutputWidth, OutputHeight, OutputWidth * 4);
+                            WriteStreamFrame(composed);
+                        }
                     }
                 }
 
@@ -626,6 +631,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                         await Dispatcher.InvokeAsync(() => NdiOutputStatus.Text = "NDI SALIDA ERROR — " + ndiEx.Message);
                     }
                 }
+
+                WriteStreamFrame(frame);
 
                 await Dispatcher.InvokeAsync(() =>
                 {
@@ -933,6 +940,62 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         }
     }
 
+
+    private void WriteStreamFrame(byte[] frame)
+    {
+        _srtOutput.WriteFrame(frame);
+        _rtmpOutput.WriteFrame(frame);
+    }
+
+    private void SrtStart_Click(object sender, RoutedEventArgs e) =>
+        StartStreamOutput(_srtOutput, SrtUrlBox.Text.Trim(), false);
+
+    private void RtmpStart_Click(object sender, RoutedEventArgs e) =>
+        StartStreamOutput(_rtmpOutput, RtmpUrlBox.Text.Trim(), true);
+
+    private void StartStreamOutput(StreamOutputService output, string url, bool rtmp)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            StreamOutputStatus.Text = rtmp ? "Ingresá URL RTMP de YouTube + clave." : "Ingresá URL SRT completa.";
+            return;
+        }
+        var ffmpeg = FindFfmpeg();
+        if (ffmpeg is null)
+        {
+            StreamOutputStatus.Text = "FFmpeg no encontrado.";
+            return;
+        }
+        if (output.Start(ffmpeg, url, rtmp, OutputWidth, OutputHeight))
+        {
+            StreamOutputStatus.Text = (rtmp ? "YOUTUBE RTMP" : "SRT") + ": iniciando • 1920×1080 • 29.97 FPS";
+            Log(StreamOutputStatus.Text);
+            if (rtmp) { RtmpStartButton.IsEnabled = false; RtmpStopButton.IsEnabled = true; }
+            else { SrtStartButton.IsEnabled = false; SrtStopButton.IsEnabled = true; }
+        }
+        else
+        {
+            StreamOutputStatus.Text = (rtmp ? "YOUTUBE RTMP" : "SRT") + " ERROR: " + output.Status;
+            Log(StreamOutputStatus.Text);
+        }
+    }
+
+    private void SrtStop_Click(object sender, RoutedEventArgs e)
+    {
+        _srtOutput.Stop();
+        SrtStartButton.IsEnabled = true;
+        SrtStopButton.IsEnabled = false;
+        StreamOutputStatus.Text = "SRT: detenido";
+    }
+
+    private void RtmpStop_Click(object sender, RoutedEventArgs e)
+    {
+        _rtmpOutput.Stop();
+        RtmpStartButton.IsEnabled = true;
+        RtmpStopButton.IsEnabled = false;
+        StreamOutputStatus.Text = "YOUTUBE RTMP: detenido";
+    }
+
     private void Log(string message)
     {
         try { File.AppendAllText(_logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}"); }
@@ -990,6 +1053,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     {
         _cycleTimer.Stop();
         await StopCurrentAsync();
+        _srtOutput.Dispose();
+        _rtmpOutput.Dispose();
         _ndiService.Dispose();
     }
 }
