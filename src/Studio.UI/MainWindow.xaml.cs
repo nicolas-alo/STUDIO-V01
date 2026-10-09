@@ -14,6 +14,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
+using Microsoft.Web.WebView2.Core;
 
 namespace Studio.UI;
 
@@ -353,7 +354,12 @@ public partial class MainWindow : Window
             _audioPlayer.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 11, 11, 11);
 
             var configured = _config?.M3u8Url?.Trim() ?? "";
-            if (File.Exists(configured)) configured = new Uri(configured).AbsoluteUri;
+            if (File.Exists(configured))
+            {
+                var directory = Path.GetDirectoryName(Path.GetFullPath(configured))!;
+                _audioPlayer.CoreWebView2.SetVirtualHostNameToFolderMapping("studio-v01.local", directory, CoreWebView2HostResourceAccessKind.Allow);
+                configured = "https://studio-v01.local/" + Uri.EscapeDataString(Path.GetFileName(configured));
+            }
             var jsonUrl = JsonSerializer.Serialize(configured);
             var html = @"<!doctype html><html><body style='margin:0;background:#0b0b0b;color:#fff;font-family:Arial;overflow:hidden'>
 <div style='padding:4px'><audio id='a' controls style='width:100%'></audio><div id='s' style='font-size:11px;color:#aaa'>M3U8 no configurado</div></div>
