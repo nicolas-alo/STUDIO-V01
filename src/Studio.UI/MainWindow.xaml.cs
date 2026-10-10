@@ -55,6 +55,7 @@ public partial class MainWindow : Window
     private int _index = -1;
     private bool _manualSelection;
     private volatile bool _quadProgramActive;
+    private volatile bool _htmlProgramActive;
     private readonly bool[] _climateEnabled = new bool[5];
     private readonly bool[] _logoEnabled = new bool[5];
     private readonly bool[] _newsEnabled = new bool[5];
@@ -99,6 +100,9 @@ public partial class MainWindow : Window
         try
         {
             CreateWebViews();
+            // Fija el primer layout antes de iniciar las capturas HTML; evita
+            // que el primer frame use las dimensiones transitorias del arranque.
+            await Dispatcher.InvokeAsync(() => ResizeProgramPreview(), DispatcherPriority.Loaded);
         }
         catch (Exception ex)
         {
@@ -277,6 +281,9 @@ public partial class MainWindow : Window
     private async Task ApplyActiveOverlaysAsync(int slot)
     {
         HideAllOverlays();
+        // Las páginas HTML (grilla/programación) son fuentes limpias: nunca
+        // deben recibir los overlays gráficos de las cámaras.
+        if (_quadProgramActive || _htmlProgramActive) return;
         // Los WebView2 quedan cargados: no se vuelve a navegar al cambiar de cámara.
         if (_climateEnabled[slot] && _climateOverlay is not null)
             ClimateHost.Visibility = Visibility.Visible;
@@ -392,6 +399,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private async Task ShowHtmlAsync(string url)
     {
         _quadProgramActive = false;
+        _htmlProgramActive = true;
+        HideAllOverlays();
         PreviewImage.Visibility = Visibility.Collapsed;
         QuadPreview.Visibility = Visibility.Collapsed;
         HtmlHost.Visibility = Visibility.Visible;
@@ -426,6 +435,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private async Task ShowQuadAsync()
     {
         _quadProgramActive = true;
+        _htmlProgramActive = false;
+        HideAllOverlays();
         HtmlHost.Visibility = Visibility.Collapsed;
         PreviewImage.Visibility = Visibility.Collapsed;
         QuadPreview.Visibility = Visibility.Visible;
@@ -579,6 +590,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private async Task ShowRtspAsync(string url)
     {
         _quadProgramActive = false;
+        _htmlProgramActive = false;
         HtmlHost.Visibility = Visibility.Collapsed;
         QuadPreview.Visibility = Visibility.Collapsed;
         PreviewImage.Visibility = Visibility.Visible;
@@ -724,10 +736,10 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         ProgramCanvas.Width = width;
         ProgramCanvas.Height = height;
 
-        // WebView2 recibe el mismo factor de preview. Con zoom proporcional,
-        // una página diseñada en 1920x1080 conserva su composición y solamente
-        // se reduce visualmente para entrar en el visor.
-        var webZoom = Math.Max(0.25, Math.Min(1.0, scale));
+        // El zoom de las páginas no depende del tamaño de la ventana. Alterarlo
+        // aquí cambiaba el viewport CSS y hacía que los overlays arrancaran
+        // agrandados hasta que el usuario redimensionaba el programa.
+        const double webZoom = 1.0;
 
         if (_htmlPreview is not null)
             _htmlPreview.ZoomFactor = webZoom;
@@ -1080,7 +1092,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             news = _newsFrame;
         }
 
-        if (!_quadProgramActive)
+        if (!_quadProgramActive && !_htmlProgramActive)
         {
             BlendOverlay(output, climate);
             BlendOverlay(output, news);
@@ -1117,20 +1129,17 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         {
             try
             {
-                var visibility = await Dispatcher.InvokeAsync(() => new[]
-                {
-                    ClimateHost.Visibility == Visibility.Visible,
-                    LogoHost.Visibility == Visibility.Visible,
-                    NewsHost.Visibility == Visibility.Visible
-                });
-                var climate = await CaptureWebViewFrameAsync(_climateOverlay, visibility[0]);
-                var logo = await CaptureWebViewFrameAsync(_logoOverlay, visibility[1]);
-                var news = await CaptureWebViewFrameAsync(_newsOverlay, visibility[2]);
+                // Capturar aunque el preview esté detrás de otra ventana. El
+                // estado Visible/Collapsed solo controla la mezcla final, no la
+                // actualización del contenido HTML.
+                var climate = await CaptureWebViewFrameAsync(_climateOverlay, _climateOverlay is not null);
+                var logo = await CaptureWebViewFrameAsync(_logoOverlay, _logoOverlay is not null);
+                var news = await CaptureWebViewFrameAsync(_newsOverlay, _newsOverlay is not null);
                 lock (_overlayFrameLock)
                 {
-                    _climateFrame = climate;
-                    _logoFrame = logo;
-                    _newsFrame = news;
+                    if (climate is not null) _climateFrame = climate;
+                    if (logo is not null) _logoFrame = logo;
+                    if (news is not null) _newsFrame = news;
                 }
             }
             catch (Exception ex) { Log("CAPTURA OVERLAYS ERROR: " + ex.Message); }
