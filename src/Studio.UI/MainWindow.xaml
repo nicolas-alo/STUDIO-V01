@@ -263,6 +263,14 @@
             <Grid Background="#101010" Margin="12"><StackPanel>
                 <TextBlock Text="CÁMARAS" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
                 <TextBlock Text="Las fuentes de cámara y la grilla se seleccionan desde PROGRAMA. La recepción NDI se administra en OVERLAYS y la publicación NDI en SALIDAS." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap"/>
+                <!-- Compatibilidad interna con el controlador de salidas existente; la interfaz visible está en SALIDAS. -->
+                <StackPanel Visibility="Collapsed">
+                    <TextBlock x:Name="StreamOutputStatus" Text="SALIDAS: detenidas"/>
+                    <Button x:Name="SrtStartButton" IsEnabled="True"/>
+                    <Button x:Name="SrtStopButton" IsEnabled="False"/>
+                    <Button x:Name="RtmpStartButton" IsEnabled="True"/>
+                    <Button x:Name="RtmpStopButton" IsEnabled="False"/>
+                </StackPanel>
             </StackPanel></Grid>
         </TabItem>
         <TabItem Header="CONFIGURACIÓN" Background="#161616" Foreground="White">
