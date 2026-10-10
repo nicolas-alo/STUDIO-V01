@@ -736,10 +736,11 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         ProgramCanvas.Width = width;
         ProgramCanvas.Height = height;
 
-        // El zoom de las páginas no depende del tamaño de la ventana. Alterarlo
-        // aquí cambiaba el viewport CSS y hacía que los overlays arrancaran
-        // agrandados hasta que el usuario redimensionaba el programa.
-        const double webZoom = 1.0;
+        // WebView2 tiene un viewport del tamaño visual del preview. Aplicamos
+        // el mismo factor de escala para conservar un lienzo lógico 1920x1080;
+        // con ZoomFactor=1 el HTML se renderiza dentro del viewport pequeño y,
+        // al ampliar la captura a 1920x1080, queda gigante/recortado.
+        var webZoom = Math.Max(0.25, Math.Min(1.0, scale));
 
         if (_htmlPreview is not null)
             _htmlPreview.ZoomFactor = webZoom;
@@ -1129,22 +1130,55 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         {
             try
             {
-                // Capturar aunque el preview esté detrás de otra ventana. El
-                // estado Visible/Collapsed solo controla la mezcla final, no la
-                // actualización del contenido HTML.
-                var climate = await CaptureWebViewFrameAsync(_climateOverlay, _climateOverlay is not null);
-                var logo = await CaptureWebViewFrameAsync(_logoOverlay, _logoOverlay is not null);
-                var news = await CaptureWebViewFrameAsync(_newsOverlay, _newsOverlay is not null);
-                lock (_overlayFrameLock)
+                // Las vistas de grilla/programación no llevan overlays: durante
+                // esos modos no capturamos PNG ni consumimos CPU innecesariamente.
+                var mode = await Dispatcher.InvokeAsync(() => new
                 {
-                    if (climate is not null) _climateFrame = climate;
-                    if (logo is not null) _logoFrame = logo;
-                    if (news is not null) _newsFrame = news;
+                    CleanSource = _quadProgramActive || _htmlProgramActive,
+                    Slot = GetActiveOverlaySlot()
+                });
+
+                if (mode.CleanSource || mode.Slot < 0)
+                {
+                    lock (_overlayFrameLock)
+                    {
+                        _climateFrame = null;
+                        _logoFrame = null;
+                        _newsFrame = null;
+                    }
+                }
+                else
+                {
+                    var slot = mode.Slot;
+                    var enabled = await Dispatcher.InvokeAsync(() => new[]
+                    {
+                        _climateEnabled[slot],
+                        _logoEnabled[slot],
+                        _newsEnabled[slot]
+                    });
+
+                    // Capturamos únicamente los overlays habilitados para la
+                    // cámara actual; antes se rasterizaban los tres siempre,
+                    // incluso cuando estaban apagados.
+                    byte[]? climate = enabled[0] ? await CaptureWebViewFrameAsync(_climateOverlay, true) : null;
+                    byte[]? logo = enabled[1] ? await CaptureWebViewFrameAsync(_logoOverlay, true) : null;
+                    byte[]? news = enabled[2] ? await CaptureWebViewFrameAsync(_newsOverlay, true) : null;
+
+                    lock (_overlayFrameLock)
+                    {
+                        if (!enabled[0]) _climateFrame = null;
+                        else if (climate is not null) _climateFrame = climate;
+                        if (!enabled[1]) _logoFrame = null;
+                        else if (logo is not null) _logoFrame = logo;
+                        if (!enabled[2]) _newsFrame = null;
+                        else if (news is not null) _newsFrame = news;
+                    }
                 }
             }
             catch (Exception ex) { Log("CAPTURA OVERLAYS ERROR: " + ex.Message); }
 
-            await Task.Delay(200);
+            // Mantener una cadencia moderada sin acumular capturas pendientes.
+            await Task.Delay(120);
         }
     }
 
