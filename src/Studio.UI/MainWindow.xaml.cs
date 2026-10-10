@@ -1290,7 +1290,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     {
         if (string.IsNullOrWhiteSpace(url))
         {
-            StreamOutputStatus.Text = rtmp ? "Ingresá URL RTMP de YouTube + clave." : "Ingresá URL SRT completa.";
+            StreamOutputStatus.Text = rtmp ? "Ingresá URL RTMP de YouTube + clave." : "No se pudo iniciar SRT Listener; revisá FFmpeg, puerto y Firewall.";
             return;
         }
         var ffmpeg = FindFfmpeg();
@@ -1301,7 +1301,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         }
         if (output.Start(ffmpeg, url, rtmp, OutputWidth, OutputHeight))
         {
-            StreamOutputStatus.Text = (rtmp ? "YOUTUBE RTMP" : "SRT CALLER") + ": iniciando • 1920×1080 • 29.97 FPS";
+            StreamOutputStatus.Text = (rtmp ? "YOUTUBE RTMP" : "SRT LISTENER") + ": iniciando • 1920×1080 • 29.97 FPS";
             Log(StreamOutputStatus.Text);
             if (rtmp) { YoutubeStatusText.Text = "YouTube RTMP: conectando…"; RtmpStartButton2.IsEnabled = false; RtmpStopButton2.IsEnabled = true; RtmpStartButton.IsEnabled = false; RtmpStopButton.IsEnabled = true; }
             else { SrtStatusText.Text = "SRT Listener: esperando conexión…"; SrtStartButton2.IsEnabled = false; SrtStopButton2.IsEnabled = true; SrtStartButton.IsEnabled = false; SrtStopButton.IsEnabled = true; }
