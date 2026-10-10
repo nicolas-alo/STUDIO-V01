@@ -8,6 +8,10 @@ internal sealed class StreamOutputService : IDisposable
     private readonly object _gate = new();
     private Process? _process;
     private Stream? _input;
+    private CancellationTokenSource? _writerCts;
+    private Task? _writerTask;
+    private byte[]? _latestFrame;
+
     public string Status { get; private set; } = "Detenido";
     public bool IsActive { get { lock (_gate) return _process is { HasExited: false } && _input is not null; } }
 
@@ -42,9 +46,21 @@ internal sealed class StreamOutputService : IDisposable
             if (rtmp) { psi.ArgumentList.Add("-f"); psi.ArgumentList.Add("flv"); }
             else { psi.ArgumentList.Add("-mpegts_flags"); psi.ArgumentList.Add("+resend_headers"); psi.ArgumentList.Add("-f"); psi.ArgumentList.Add("mpegts"); }
             psi.ArgumentList.Add(destination);
+
             var process = Process.Start(psi);
             if (process is null) { Status = "FFmpeg no inició"; return false; }
-            lock (_gate) { _process = process; _input = process.StandardInput.BaseStream; }
+
+            var cts = new CancellationTokenSource();
+            lock (_gate)
+            {
+                _process = process;
+                _input = process.StandardInput.BaseStream;
+                _latestFrame = null;
+                _writerCts = cts;
+                Status = "Conectando";
+                _writerTask = Task.Run(() => WriteFramesLoopAsync(process, cts.Token));
+            }
+
             _ = Task.Run(async () =>
             {
                 try
@@ -58,30 +74,80 @@ internal sealed class StreamOutputService : IDisposable
                 }
                 catch { }
             });
-            Status = "Conectando";
             return true;
         }
         catch (Exception ex) { Status = ex.Message; Stop(); return false; }
     }
 
+    // La fuente nunca escribe directamente al pipe de FFmpeg. Conservamos el cuadro
+    // más reciente y cada salida lo transmite desde su propio hilo, sin bloquear NDI
+    // ni la captura cuando una conexión de red se ralentiza.
     public void WriteFrame(byte[] frame)
     {
         lock (_gate)
         {
             if (_process is not { HasExited: false } || _input is null) return;
-            try { _input.Write(frame, 0, frame.Length); if (Status == "Conectando") Status = "Emitiendo video"; }
-            catch (Exception ex) { Status = "Error enviando video: " + ex.Message; StopLocked(); }
+            _latestFrame = frame;
         }
     }
 
-    public void Stop() { lock (_gate) StopLocked(); }
-    private void StopLocked()
+    private async Task WriteFramesLoopAsync(Process process, CancellationToken token)
     {
-        try { _input?.Dispose(); } catch { }
-        _input = null;
-        try { if (_process is { HasExited: false }) _process.Kill(true); } catch { }
-        try { _process?.Dispose(); } catch { }
-        _process = null;
+        var interval = TimeSpan.FromMilliseconds(1001d / 30d);
+        try
+        {
+            while (!token.IsCancellationRequested && !process.HasExited)
+            {
+                byte[]? frame;
+                Stream? input;
+                lock (_gate)
+                {
+                    if (!ReferenceEquals(_process, process)) return;
+                    frame = _latestFrame;
+                    input = _input;
+                }
+
+                if (frame is not null && input is not null)
+                {
+                    try
+                    {
+                        await input.WriteAsync(frame.AsMemory(0, frame.Length), token).ConfigureAwait(false);
+                        if (Status == "Conectando") Status = "Emitiendo video";
+                    }
+                    catch (OperationCanceledException) { break; }
+                    catch (Exception ex)
+                    {
+                        Status = "Error enviando video: " + ex.Message;
+                        break;
+                    }
+                }
+
+                await Task.Delay(interval, token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) { }
     }
+
+    public void Stop()
+    {
+        CancellationTokenSource? cts;
+        Process? process;
+        lock (_gate)
+        {
+            cts = _writerCts;
+            process = _process;
+            _writerCts = null;
+            _writerTask = null;
+            _input = null;
+            _process = null;
+            _latestFrame = null;
+            try { cts?.Cancel(); } catch { }
+            try { if (process is { HasExited: false }) process.Kill(true); } catch { }
+            try { process?.Dispose(); } catch { }
+            Status = "Detenido";
+        }
+        cts?.Dispose();
+    }
+
     public void Dispose() => Stop();
 }
