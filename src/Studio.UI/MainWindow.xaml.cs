@@ -96,6 +96,7 @@ public partial class MainWindow : Window
     {
         Log("INICIO STUDIO V01 ETAPA 3 — NDI");
         _ = Task.Run(() => NdiOutputPumpAsync(_ndiPumpCts.Token));
+        _ = Task.Run(() => PreviewOutputPumpAsync(_ndiPumpCts.Token));
         StatusText.Text = "VENTANA ABIERTA — CARGANDO...";
         try
         {
@@ -291,15 +292,12 @@ public partial class MainWindow : Window
         // deben recibir los overlays gráficos de las cámaras.
         if (_quadProgramActive || _htmlProgramActive) return;
         // Los WebView2 quedan cargados: no se vuelve a navegar al cambiar de cámara.
-        if (_climateEnabled[slot] && _climateOverlay is not null)
-            ClimateHost.Opacity = 1;
-
-        if (_logoEnabled[slot] && _logoOverlay is not null)
-            LogoHost.Opacity = 1;
-
-        if (_newsEnabled[slot] && _newsOverlay is not null)
-            NewsHost.Opacity = 1;
-
+        // La composición final ya incorpora las capas capturadas. Los WebView2
+        // permanecen activos pero nunca se dibujan por encima del preview: eso
+        // duplicaría overlays y separaría la imagen visible de la salida real.
+        ClimateHost.Opacity = 0;
+        LogoHost.Opacity = 0;
+        NewsHost.Opacity = 0;
         await Task.CompletedTask;
     }
 
@@ -423,7 +421,11 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                     document.documentElement.appendChild(style);
                 })();
             ");
-            _htmlPreview.Source = new Uri(url);
+            // No recargar una página ya abierta: mantiene vivos sus relojes,
+            // animaciones y datos al volver a ponerla al aire.
+            var requestedUri = new Uri(url);
+            if (_htmlPreview.Source is null || !string.Equals(_htmlPreview.Source.AbsoluteUri, requestedUri.AbsoluteUri, StringComparison.OrdinalIgnoreCase))
+                _htmlPreview.Source = requestedUri;
             ResizeProgramPreview();
 
             _htmlCaptureCts?.Cancel();
@@ -670,16 +672,9 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
                 var frame = new byte[frameSize];
                 Buffer.BlockCopy(buffer, 0, frame, 0, frameSize);
-                var bitmap = BitmapSource.Create(OutputWidth, OutputHeight, 96, 96,
-                    System.Windows.Media.PixelFormats.Bgr32, null, frame, OutputWidth * bpp);
-                bitmap.Freeze();
-
                 PublishProgramFrame(frame);
-
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    if (!token.IsCancellationRequested) PreviewImage.Source = bitmap;
-                });
+                // El preview se actualiza desde PreviewOutputPumpAsync con el
+                // mismo fotograma compuesto que reciben SRT, NDI y YouTube.
             }
         }
         catch (OperationCanceledException) { }
@@ -913,7 +908,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                     await Dispatcher.InvokeAsync(() =>
                     {
                         if (token.IsCancellationRequested) return;
-                        PreviewImage.Source = bitmap;
+                        // El preview se alimenta desde el fotograma final común.
                         PreviewImage.Visibility = Visibility.Visible;
                         if (firstFrame)
                         {
@@ -1063,6 +1058,40 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         }
     }
 
+    private async Task PreviewOutputPumpAsync(CancellationToken token)
+    {
+        var interval = TimeSpan.FromMilliseconds(1001d / 30d);
+        while (!token.IsCancellationRequested)
+        {
+            byte[]? frame;
+            lock (_ndiFrameLock) frame = _latestNdiFrame;
+
+            if (frame is not null)
+            {
+                try
+                {
+                    var bitmap = BitmapSource.Create(OutputWidth, OutputHeight, 96, 96,
+                        System.Windows.Media.PixelFormats.Bgr32, null, frame, OutputWidth * 4);
+                    bitmap.Freeze();
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        if (token.IsCancellationRequested) return;
+                        // El WebView HTML sigue vivo detrás, pero el preview
+                        // muestra siempre el fotograma final que va a las salidas.
+                        HtmlHost.Visibility = Visibility.Visible;
+                        QuadPreview.Visibility = Visibility.Collapsed;
+                        PreviewImage.Source = bitmap;
+                        PreviewImage.Visibility = Visibility.Visible;
+                    });
+                }
+                catch (Exception ex) { Log("PREVIEW FINAL ERROR: " + ex.Message); }
+            }
+
+            try { await Task.Delay(interval, token).ConfigureAwait(false); }
+            catch (OperationCanceledException) { break; }
+        }
+    }
+
     private async Task NdiOutputPumpAsync(CancellationToken token)
     {
         var interval = TimeSpan.FromMilliseconds(1001d / 30d);
@@ -1102,7 +1131,9 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             news = _newsFrame;
         }
 
-        if (!_quadProgramActive && !_htmlProgramActive)
+        // Solo las cuatro fuentes de cámara admiten overlays. No reutilizar
+        // capas antiguas al emitir grilla, HTML o una entrada NDI limpia.
+        if (!_quadProgramActive && !_htmlProgramActive && _index >= 0 && _index < 4)
         {
             BlendOverlay(output, climate);
             BlendOverlay(output, news);
