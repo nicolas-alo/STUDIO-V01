@@ -897,25 +897,18 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                 if (_ndiService.TryCaptureBgrx(out var pixels, out var width, out var height, out var stride) &&
                     pixels is not null)
                 {
-                    var bitmap = BitmapSource.Create(
-                        width, height, 96, 96,
-                        System.Windows.Media.PixelFormats.Bgr32,
-                        null, pixels, stride);
-                    bitmap.Freeze();
                     var outputFrame = NormalizeFrame(pixels, width, height, stride);
                     WriteStreamFrame(outputFrame);
 
-                    await Dispatcher.InvokeAsync(() =>
+                    if (firstFrame)
                     {
-                        if (token.IsCancellationRequested) return;
-                        // El preview se alimenta desde el fotograma final común.
-                        PreviewImage.Visibility = Visibility.Visible;
-                        if (firstFrame)
+                        firstFrame = false;
+                        await Dispatcher.InvokeAsync(() =>
                         {
-                            firstFrame = false;
+                            if (token.IsCancellationRequested) return;
                             StatusText.Text = $"NDI INPUT • {width}×{height} • fuente NDI";
-                        }
-                    });
+                        });
+                    }
                 }
             }
             catch (OperationCanceledException)
