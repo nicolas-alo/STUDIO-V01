@@ -154,6 +154,7 @@
                       VerticalAlignment="Center"
                       Background="#000000"
                       ClipToBounds="True">
+                    <Grid x:Name="HtmlHost" Visibility="Visible"/>
                     <Image x:Name="PreviewImage" Stretch="Fill" Visibility="Collapsed"/>
                     <Grid x:Name="QuadPreview" Visibility="Collapsed" Background="#080808">
                         <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="*"/></Grid.RowDefinitions>
@@ -163,10 +164,9 @@
                         <Image x:Name="QuadImage2" Grid.Row="1" Grid.Column="0" Stretch="Fill"/>
                         <Image x:Name="QuadImage3" Grid.Row="1" Grid.Column="1" Stretch="Fill"/>
                     </Grid>
-                    <Grid x:Name="HtmlHost" Visibility="Collapsed"/>
-                    <Grid x:Name="ClimateHost" Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="10"/>
-                    <Grid x:Name="LogoHost" Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="20"/>
-                    <Grid x:Name="NewsHost" Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="15"/>
+                    <Grid x:Name="ClimateHost" Visibility="Visible" Opacity="0" IsHitTestVisible="False" Panel.ZIndex="10"/>
+                    <Grid x:Name="LogoHost" Visibility="Visible" Opacity="0" IsHitTestVisible="False" Panel.ZIndex="20"/>
+                    <Grid x:Name="NewsHost" Visibility="Visible" Opacity="0" IsHitTestVisible="False" Panel.ZIndex="15"/>
                 </Grid>
 
                 <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="14"
