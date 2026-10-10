@@ -271,9 +271,15 @@ public partial class MainWindow : Window
 
     private void HideAllOverlays()
     {
-        ClimateHost.Visibility = Visibility.Collapsed;
-        LogoHost.Visibility = Visibility.Collapsed;
-        NewsHost.Visibility = Visibility.Collapsed;
+        // No colapsar WebView2: al ocultarlo Chromium frena o reduce sus
+        // animaciones. Opacity oculta la capa en el programa, pero la página
+        // permanece renderizando para que al activarla no vuelva congelada.
+        ClimateHost.Visibility = Visibility.Visible;
+        LogoHost.Visibility = Visibility.Visible;
+        NewsHost.Visibility = Visibility.Visible;
+        ClimateHost.Opacity = 0;
+        LogoHost.Opacity = 0;
+        NewsHost.Opacity = 0;
     }
 
     private void ApplyActiveOverlays(int slot) => _ = ApplyActiveOverlaysAsync(slot);
@@ -286,13 +292,13 @@ public partial class MainWindow : Window
         if (_quadProgramActive || _htmlProgramActive) return;
         // Los WebView2 quedan cargados: no se vuelve a navegar al cambiar de cámara.
         if (_climateEnabled[slot] && _climateOverlay is not null)
-            ClimateHost.Visibility = Visibility.Visible;
+            ClimateHost.Opacity = 1;
 
         if (_logoEnabled[slot] && _logoOverlay is not null)
-            LogoHost.Visibility = Visibility.Visible;
+            LogoHost.Opacity = 1;
 
         if (_newsEnabled[slot] && _newsOverlay is not null)
-            NewsHost.Visibility = Visibility.Visible;
+            NewsHost.Opacity = 1;
 
         await Task.CompletedTask;
     }
@@ -437,7 +443,9 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         _quadProgramActive = true;
         _htmlProgramActive = false;
         HideAllOverlays();
-        HtmlHost.Visibility = Visibility.Collapsed;
+        // Mantener el HTML renderizando detrás de la grilla para que sus
+        // animaciones sigan avanzando aunque la fuente no esté al aire.
+        HtmlHost.Visibility = Visibility.Visible;
         PreviewImage.Visibility = Visibility.Collapsed;
         QuadPreview.Visibility = Visibility.Visible;
 
@@ -591,7 +599,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     {
         _quadProgramActive = false;
         _htmlProgramActive = false;
-        HtmlHost.Visibility = Visibility.Collapsed;
+        // Mantener el HTML renderizando detrás de la cámara.
+        HtmlHost.Visibility = Visibility.Visible;
         QuadPreview.Visibility = Visibility.Collapsed;
         PreviewImage.Visibility = Visibility.Visible;
 
@@ -1140,12 +1149,11 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
                 if (mode.CleanSource || mode.Slot < 0)
                 {
-                    lock (_overlayFrameLock)
-                    {
-                        _climateFrame = null;
-                        _logoFrame = null;
-                        _newsFrame = null;
-                    }
+                    // Las páginas siguen renderizando, pero no capturamos capas
+                    // que no forman parte de la salida actual. Conservamos los
+                    // últimos cuadros hasta volver a una cámara.
+                    await Task.Delay(50);
+                    continue;
                 }
                 else
                 {
@@ -1181,8 +1189,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             }
             catch (Exception ex) { Log("CAPTURA OVERLAYS ERROR: " + ex.Message); }
 
-            // Mantener una cadencia moderada sin acumular capturas pendientes.
-            await Task.Delay(120);
+            // Captura sin cola; intervalo corto para no limitar reloj/logo.
+            await Task.Delay(50);
         }
     }
 
