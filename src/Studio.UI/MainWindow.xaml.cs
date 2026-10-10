@@ -54,6 +54,7 @@ public partial class MainWindow : Window
     private LocalConfig? _config;
     private int _index = -1;
     private bool _manualSelection;
+    private volatile bool _quadProgramActive;
     private readonly bool[] _climateEnabled = new bool[5];
     private readonly bool[] _logoEnabled = new bool[5];
     private readonly bool[] _newsEnabled = new bool[5];
@@ -159,7 +160,8 @@ public partial class MainWindow : Window
         if (_config is null) return;
         if (slot < 0 || slot > 6) return;
 
-        _manualSelection = true;
+        // La selección manual cambia el plano actual, pero no desactiva el ciclo automático de 20 s.
+        _manualSelection = false;
         _index = slot;
         await ShowCurrentAsync();
     }
@@ -176,7 +178,7 @@ public partial class MainWindow : Window
         {
             StatusText.Text = "4 CÁMARAS • 1920×1080 • 29.97 FPS";
             await ShowQuadAsync();
-            ApplyActiveOverlays(4);
+            // La grilla de cámaras es una vista limpia: no superponer los overlays del programa.
             return;
         }
 
@@ -388,6 +390,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private async Task ShowHtmlAsync(string url)
     {
+        _quadProgramActive = false;
         PreviewImage.Visibility = Visibility.Collapsed;
         QuadPreview.Visibility = Visibility.Collapsed;
         HtmlHost.Visibility = Visibility.Visible;
@@ -421,6 +424,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private async Task ShowQuadAsync()
     {
+        _quadProgramActive = true;
         HtmlHost.Visibility = Visibility.Collapsed;
         PreviewImage.Visibility = Visibility.Collapsed;
         QuadPreview.Visibility = Visibility.Visible;
@@ -573,6 +577,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private async Task ShowRtspAsync(string url)
     {
+        _quadProgramActive = false;
         HtmlHost.Visibility = Visibility.Collapsed;
         QuadPreview.Visibility = Visibility.Collapsed;
         PreviewImage.Visibility = Visibility.Visible;
@@ -1053,9 +1058,12 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             news = _newsFrame;
         }
 
-        BlendOverlay(output, climate);
-        BlendOverlay(output, news);
-        BlendOverlay(output, logo);
+        if (!_quadProgramActive)
+        {
+            BlendOverlay(output, climate);
+            BlendOverlay(output, news);
+            BlendOverlay(output, logo);
+        }
         return output;
     }
 
@@ -1229,7 +1237,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
         var localIp = SrtLocalIpCombo.SelectedItem?.ToString() ?? "";
         // Listener escucha en todas las interfaces; la IP detectada se muestra para que el Caller remoto conecte.
-        var url = $"srt://0.0.0.0:{port}?mode=listener&transtype=live";
+        var url = $"srt://0.0.0.0:{port}?mode=listener&transtype=live&latency=120000";
 
         if (_config is not null) { _config.SrtPort = port; _config.SrtLocalIp = localIp; SaveConfig(); }
         SrtStatusText.Text = $"SRT Listener: escuchando en {localIp}:{port}…";
@@ -1364,6 +1372,9 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private async Task StopCurrentAsync()
     {
+        _htmlCaptureCts?.Cancel();
+        _htmlCaptureCts?.Dispose();
+        _htmlCaptureCts = null;
         _sourceCts?.Cancel();
         _sourceCts?.Dispose();
         _sourceCts = null;
