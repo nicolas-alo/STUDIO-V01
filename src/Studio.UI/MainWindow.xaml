@@ -178,10 +178,32 @@
     </Grid>
         </TabItem>
         <TabItem Header="OVERLAYS" Background="#161616" Foreground="White">
-            <Grid Background="#101010" Margin="12"><StackPanel>
-                <TextBlock Text="OVERLAYS DEL PROGRAMA" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
-                <TextBlock Text="Clima, mosca y noticias. Los controles por fuente siguen en PROGRAMA. La posición y el tamaño individuales se incorporarán en esta pestaña." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap"/>
-            </StackPanel></Grid>
+            <ScrollViewer Background="#101010" VerticalScrollBarVisibility="Auto"><StackPanel Margin="18" MaxWidth="1050" HorizontalAlignment="Left">
+                <TextBlock Text="OVERLAYS Y ENTRADA NDI" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
+                <TextBlock Text="Administrá aquí las capas gráficas y elegí la fuente NDI entrante. Conectar al aire cambia el programa a NDI; VOLVER AL PROGRAMA retoma el ciclo automático." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap" Margin="0,0,0,14"/>
+                <Border Background="#191919" BorderBrush="#383838" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="ENTRADA NDI · SELECCIÓN Y CONTROL AL AIRE" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="110"/></Grid.ColumnDefinitions>
+                            <ComboBox x:Name="NdiSourceCombo" Grid.Column="0" Height="34" Margin="0,0,8,0" ToolTip="Seleccioná una fuente NDI" SelectionChanged="NdiSourceCombo_SelectionChanged"/>
+                            <Button Grid.Column="1" Content="REFRESCAR" Height="34" Click="NdiRefresh_Click"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" x:Name="NdiConnectButton" Content="PASAR NDI AL AIRE" Height="36" Margin="0,0,4,0" Click="NdiConnect_Click"/>
+                            <Button Grid.Column="1" x:Name="NdiReturnButton" Content="VOLVER AL PROGRAMA" Height="36" Margin="4,0,0,0" Click="NdiReturn_Click"/>
+                        </Grid>
+                        <TextBlock x:Name="NdiRuntimeStatus" Text="NDI: buscando Runtime..." Foreground="#AAAAAA" FontSize="12" Margin="2,0,2,2"/>
+                    </StackPanel>
+                </Border>
+                <Border Background="#191919" BorderBrush="#383838" BorderThickness="1" CornerRadius="8" Padding="16">
+                    <StackPanel>
+                        <TextBlock Text="CAPAS GRÁFICAS" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,0,0,8"/>
+                        <TextBlock Text="Clima, mosca/logo y noticias se mantienen como overlays del programa. Los controles de activación por fuente están en la pestaña PROGRAMA." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel></ScrollViewer>
         </TabItem>
         <TabItem Header="STINGERS" Background="#161616" Foreground="White">
             <ScrollViewer Background="#101010" VerticalScrollBarVisibility="Auto"><StackPanel Margin="18" MaxWidth="1000" HorizontalAlignment="Left">
@@ -205,7 +227,9 @@
 <Border Background="#191919" BorderBrush="#383838" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12"><StackPanel>
 <TextBlock Text="NDI · SALIDA DE RED" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
 <DockPanel><Button Content="APLICAR NOMBRE" Width="150" Height="36" Click="ApplyNdiOutput_Click" DockPanel.Dock="Right" Margin="8,0,0,0"/><TextBox x:Name="NdiOutputNameBox2" Height="36" Padding="8" Text="STUDIO V01" Background="#101010" Foreground="White" BorderBrush="#444444" VerticalContentAlignment="Center"/></DockPanel>
-<TextBlock Text="La selección del receptor NDI sigue en PROGRAMA. La salida NDI publica el nombre indicado." Foreground="#AAAAAA" Margin="0,8,0,0" TextWrapping="Wrap"/>
+<TextBox x:Name="NdiOutputNameBox" Height="1" Visibility="Collapsed" TextChanged="NdiOutputNameBox_TextChanged"/>
+<TextBlock x:Name="NdiOutputStatus" Text="NDI SALIDA: iniciando..." Foreground="#7FC7FF" Margin="0,8,0,0" TextWrapping="Wrap"/>
+<TextBlock Text="Esta salida publica el programa final con el nombre indicado. La selección de la fuente NDI entrante está en OVERLAYS." Foreground="#AAAAAA" Margin="0,8,0,0" TextWrapping="Wrap"/>
 </StackPanel></Border>
 <Border Background="#191919" BorderBrush="#383838" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12"><StackPanel>
 <TextBlock Text="SRT CALLER" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,0,0,12"/>
@@ -235,68 +259,11 @@
 <TextBlock Text="Nota: las playlists M3U8 locales con segmentos relativos necesitan servirse por HTTP para que el reproductor web acceda a los archivos de video." Foreground="#AAAAAA" FontSize="12" Margin="0,12,0,0" TextWrapping="Wrap"/>
 </StackPanel></Border></StackPanel></ScrollViewer>
         </TabItem>
-        <TabItem Header="CÁMARAS / NDI" Background="#161616" Foreground="White">
-            <ScrollViewer Background="#101010" VerticalScrollBarVisibility="Auto"><StackPanel Margin="16" MaxWidth="1000" HorizontalAlignment="Left">
-                <TextBlock Text="CÁMARAS Y NDI" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
-                <TextBlock Text="La detección y recepción NDI se administran aquí. Elegí una fuente, actualizá la lista y conectá al aire con 0; volvé al programa con 5." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap" Margin="0,0,0,12"/>
-                <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-
-                            <Grid Grid.Row="0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="92"/>
-                                </Grid.ColumnDefinitions>
-                                <ComboBox x:Name="NdiSourceCombo" Grid.Column="0" Height="32" Margin="0,0,6,6" ToolTip="Seleccioná una fuente NDI"/>
-                                <Button Grid.Column="1" Content="REFRESCAR" Height="32" Click="NdiRefresh_Click"/>
-                            </Grid>
-
-                            <Grid Grid.Row="1" Margin="0,0,0,5">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Button Grid.Column="0" x:Name="NdiConnectButton" Content="CONECTAR NDI / AL AIRE" Height="30" Margin="0,0,4,0" Click="NdiConnect_Click"/>
-                                <Button Grid.Column="1" x:Name="NdiReturnButton" Content="VOLVER AL PROGRAMA" Height="30" Margin="4,0,0,0" Click="NdiReturn_Click"/>
-                            </Grid>
-
-                            <StackPanel Grid.Row="2">
-                                <TextBlock x:Name="NdiRuntimeStatus" Text="NDI: buscando Runtime..." Foreground="#AAAAAA" FontSize="12" Margin="2,0,2,2"/>
-                                <TextBlock x:Name="NdiOutputStatus" Text="NDI SALIDA: iniciando..." Foreground="#7FC7FF" FontSize="12" Margin="2,0,2,5"/>
-                            </StackPanel>
-
-                            <Grid Grid.Row="3">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="SALIDA NDI" Foreground="#DDDDDD" VerticalAlignment="Center" FontSize="12" Margin="2,0,8,0"/>
-                                <TextBox x:Name="NdiOutputNameBox" Grid.Column="1" Height="28" Text="STUDIO V01" Padding="6,3" Background="#181818" Foreground="White" BorderBrush="#3A3A3A" TextChanged="NdiOutputNameBox_TextChanged"/>
-                            </Grid>
-                            <StackPanel Grid.Row="4" Margin="0,7,0,0" Visibility="Collapsed">
-                                <TextBlock Text="SALIDAS SRT / YOUTUBE RTMP" Foreground="White" FontSize="13" FontWeight="Bold" Margin="2,0,0,5"/>
-                                <TextBox x:Name="SrtUrlBox" Height="27" Margin="0,0,0,4" Padding="5,3" Background="#181818" Foreground="White" BorderBrush="#3A3A3A" ToolTip="URL SRT completa"/>
-                                <Grid Margin="0,0,0,5">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="78"/></Grid.ColumnDefinitions>
-                                    <Button x:Name="SrtStartButton" Grid.Column="0" Content="INICIAR SRT" Height="27" Margin="0,0,4,0" Click="SrtStart_Click"/>
-                                    <Button x:Name="SrtStopButton" Grid.Column="1" Content="DETENER" Height="27" IsEnabled="False" Click="SrtStop_Click"/>
-                                </Grid>
-                                <TextBox x:Name="RtmpUrlBox" Height="27" Margin="0,0,0,4" Padding="5,3" Background="#181818" Foreground="White" BorderBrush="#3A3A3A" ToolTip="URL RTMP de YouTube + clave de transmisión"/>
-                                <Grid Margin="0,0,0,3">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="78"/></Grid.ColumnDefinitions>
-                                    <Button x:Name="RtmpStartButton" Grid.Column="0" Content="INICIAR YOUTUBE" Height="27" Margin="0,0,4,0" Click="RtmpStart_Click"/>
-                                    <Button x:Name="RtmpStopButton" Grid.Column="1" Content="DETENER" Height="27" IsEnabled="False" Click="RtmpStop_Click"/>
-                                </Grid>
-                                <TextBlock x:Name="StreamOutputStatus" Text="SALIDAS: detenidas" Foreground="#AAAAAA" FontSize="11" TextWrapping="Wrap" Margin="2,0,2,0"/>
-                            </StackPanel>
-                        </Grid>
-            </StackPanel></ScrollViewer>
+        <TabItem Header="CÁMARAS" Background="#161616" Foreground="White">
+            <Grid Background="#101010" Margin="12"><StackPanel>
+                <TextBlock Text="CÁMARAS" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
+                <TextBlock Text="Las fuentes de cámara y la grilla se seleccionan desde PROGRAMA. La recepción NDI se administra en OVERLAYS y la publicación NDI en SALIDAS." Foreground="#BBBBBB" FontSize="14" TextWrapping="Wrap"/>
+            </StackPanel></Grid>
         </TabItem>
         <TabItem Header="CONFIGURACIÓN" Background="#161616" Foreground="White">
             <Grid Background="#101010" Margin="12"><StackPanel>
