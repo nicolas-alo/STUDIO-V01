@@ -1157,12 +1157,16 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                         _newsEnabled[slot]
                     });
 
-                    // Capturamos únicamente los overlays habilitados para la
-                    // cámara actual; antes se rasterizaban los tres siempre,
-                    // incluso cuando estaban apagados.
-                    byte[]? climate = enabled[0] ? await CaptureWebViewFrameAsync(_climateOverlay, true) : null;
-                    byte[]? logo = enabled[1] ? await CaptureWebViewFrameAsync(_logoOverlay, true) : null;
-                    byte[]? news = enabled[2] ? await CaptureWebViewFrameAsync(_newsOverlay, true) : null;
+                    // Capturar las capas en paralelo: las capturas PNG de WebView2
+                    // son costosas y en serie cada capa esperaba a que terminaran
+                    // las anteriores, bajando mucho los FPS de los overlays.
+                    var captures = await Task.WhenAll(
+                        enabled[0] ? CaptureWebViewFrameAsync(_climateOverlay, true) : Task.FromResult<byte[]?>(null),
+                        enabled[1] ? CaptureWebViewFrameAsync(_logoOverlay, true) : Task.FromResult<byte[]?>(null),
+                        enabled[2] ? CaptureWebViewFrameAsync(_newsOverlay, true) : Task.FromResult<byte[]?>(null));
+                    var climate = captures[0];
+                    var logo = captures[1];
+                    var news = captures[2];
 
                     lock (_overlayFrameLock)
                     {
@@ -1184,6 +1188,9 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private async Task CaptureHtmlProgramLoopAsync(CancellationToken token)
     {
+        // No se encolan capturas: una nueva captura comienza solo cuando termina
+        // la anterior. Se elimina la pausa fija de 100 ms que limitaba la salida
+        // a menos de 10 fps incluso cuando el WebView2 podía producir más cuadros.
         while (!token.IsCancellationRequested)
         {
             try
@@ -1193,8 +1200,12 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                     PublishProgramFrame(frame);
             }
             catch (OperationCanceledException) { break; }
-            catch (Exception ex) { Log("CAPTURA HTML PROGRAMA ERROR: " + ex.Message); }
-            await Task.Delay(100, token);
+            catch (Exception ex)
+            {
+                Log("CAPTURA HTML PROGRAMA ERROR: " + ex.Message);
+                try { await Task.Delay(30, token); }
+                catch (OperationCanceledException) { break; }
+            }
         }
     }
 
@@ -1219,10 +1230,22 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
             var bgra = new FormatConvertedBitmap(decoder.Frames[0],
                 System.Windows.Media.PixelFormats.Bgra32, null, 0);
-            var scaled = new TransformedBitmap(bgra, new System.Windows.Media.ScaleTransform(
-                OutputWidth / (double)bgra.PixelWidth, OutputHeight / (double)bgra.PixelHeight));
+            bgra.Freeze();
+
+            // Si WebView2 ya entrega el tamaño de salida, evitar crear una
+            // TransformedBitmap y hacer un segundo recorrido de escalado.
             var pixels = new byte[OutputWidth * OutputHeight * 4];
-            scaled.CopyPixels(pixels, OutputWidth * 4, 0);
+            if (bgra.PixelWidth == OutputWidth && bgra.PixelHeight == OutputHeight)
+            {
+                bgra.CopyPixels(pixels, OutputWidth * 4, 0);
+            }
+            else
+            {
+                var scaled = new TransformedBitmap(bgra, new System.Windows.Media.ScaleTransform(
+                    OutputWidth / (double)bgra.PixelWidth, OutputHeight / (double)bgra.PixelHeight));
+                scaled.Freeze();
+                scaled.CopyPixels(pixels, OutputWidth * 4, 0);
+            }
             return pixels;
         }
         catch (Exception ex)
