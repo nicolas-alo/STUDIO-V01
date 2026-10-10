@@ -1183,21 +1183,41 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
             {
                 if (nic.OperationalStatus != OperationalStatus.Up) continue;
-                try { ips.AddRange(nic.GetIPProperties().UnicastAddresses.Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a.Address)).Select(a => a.Address.ToString())); }
+                try
+                {
+                    ips.AddRange(nic.GetIPProperties().UnicastAddresses
+                        .Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a.Address))
+                        .Select(a => a.Address.ToString()));
+                }
                 catch { }
             }
         }
         catch (Exception ex) { Log("IP DETECTION NETWORKINTERFACE: " + ex.Message); }
+
         if (ips.Count == 0)
         {
             try { ips.AddRange(Dns.GetHostAddresses(Dns.GetHostName()).Where(a => a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a)).Select(a => a.ToString())); }
             catch (Exception ex) { Log("IP DETECTION DNS: " + ex.Message); }
         }
-        ips = ips.Distinct().OrderBy(s => s).ToList();
+
+        ips = ips.Distinct().ToList();
+        string? preferredIp = null;
+        try
+        {
+            // UDP Connect no envía datos; Windows elige la interfaz usada para salir a la red.
+            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            socket.Connect(new IPEndPoint(IPAddress.Parse("192.0.2.1"), 9));
+            preferredIp = (socket.LocalEndPoint as IPEndPoint)?.Address.ToString();
+        }
+        catch (Exception ex) { Log("IP DETECTION ROUTE: " + ex.Message); }
+
+        ips = ips.OrderByDescending(ip => ip == preferredIp).ThenBy(ip => ip).ToList();
         SrtLocalIpCombo.ItemsSource = ips;
         SrtLocalIpCombo.SelectedIndex = ips.Count > 0 ? 0 : -1;
-        SrtStatusText.Text = ips.Count > 0 ? "IP local detectada: " + ips[0] : "No se detectó IPv4. Revisá el adaptador de red."; 
-        Log("IP LOCALES: " + (ips.Count > 0 ? string.Join(", ", ips) : "ninguna"));
+        SrtStatusText.Text = ips.Count > 0
+            ? "IP local detectada automáticamente: " + ips[0] + ". El destino debe ser la IP de la otra PC."
+            : "No se detectó IPv4. Revisá el adaptador de red.";
+        Log("IP LOCALES: " + (ips.Count > 0 ? string.Join(", ", ips) : "ninguna") + "; preferida=" + (preferredIp ?? "ninguna"));
     }
 
     private void SrtStart_Click(object sender, RoutedEventArgs e)
