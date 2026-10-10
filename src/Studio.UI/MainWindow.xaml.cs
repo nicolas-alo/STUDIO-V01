@@ -94,6 +94,7 @@ public partial class MainWindow : Window
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         Log("INICIO STUDIO V01 ETAPA 3 — NDI");
+        _ = Task.Run(() => NdiOutputPumpAsync(_ndiPumpCts.Token));
         StatusText.Text = "VENTANA ABIERTA — CARGANDO...";
         try
         {
@@ -1001,6 +1002,9 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     // Punto único de distribución del programa: la misma señal se entrega a
     // NDI, SRT y YouTube, evitando que cada salida use un camino de video diferente.
     private readonly object _programFrameLock = new();
+    private readonly object _ndiFrameLock = new();
+    private byte[]? _latestNdiFrame;
+    private readonly CancellationTokenSource _ndiPumpCts = new();
     private long _programFrameSequence;
     private long _lastProgramFrameTimestamp;
 
@@ -1018,16 +1022,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             if (now - _lastProgramFrameTimestamp < minTicks) return;
             _lastProgramFrameTimestamp = now;
             _programFrameSequence++;
-            try
-            {
-                if (_ndiService.IsSenderActive)
-                    _ndiService.SendBgrx(composedFrame, OutputWidth, OutputHeight, OutputWidth * 4);
-            }
-            catch (Exception ex)
-            {
-                Log("NDI SALIDA FRAME ERROR: " + ex);
-                _ = Dispatcher.BeginInvoke(() => NdiOutputStatus.Text = "NDI SALIDA ERROR — " + ex.Message);
-            }
+            // NDI recibe el último cuadro desde un hilo dedicado; nunca bloquea la captura.
+            lock (_ndiFrameLock) _latestNdiFrame = composedFrame;
 
             _srtOutput.WriteFrame(composedFrame);
             _rtmpOutput.WriteFrame(composedFrame);
@@ -1042,6 +1038,32 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         {
             _rtmpFirstFrameReported = true;
             _ = Dispatcher.BeginInvoke(() => YoutubeStatusText.Text = "YouTube RTMP: enviando cuadros del programa");
+        }
+    }
+
+    private async Task NdiOutputPumpAsync(CancellationToken token)
+    {
+        var interval = TimeSpan.FromMilliseconds(1001d / 30d);
+        while (!token.IsCancellationRequested)
+        {
+            byte[]? frame;
+            lock (_ndiFrameLock) frame = _latestNdiFrame;
+
+            if (frame is not null && _ndiService.IsSenderActive)
+            {
+                try
+                {
+                    _ndiService.SendBgrx(frame, OutputWidth, OutputHeight, OutputWidth * 4);
+                }
+                catch (Exception ex)
+                {
+                    Log("NDI SALIDA FRAME ERROR: " + ex);
+                    _ = Dispatcher.BeginInvoke(() => NdiOutputStatus.Text = "NDI SALIDA ERROR — " + ex.Message);
+                }
+            }
+
+            try { await Task.Delay(interval, token).ConfigureAwait(false); }
+            catch (OperationCanceledException) { break; }
         }
     }
 
@@ -1410,6 +1432,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private async void MainWindow_Closed(object? sender, EventArgs e)
     {
         _cycleTimer.Stop();
+        _ndiPumpCts.Cancel();
         await StopCurrentAsync();
         _srtOutput.Dispose();
         _rtmpOutput.Dispose();
