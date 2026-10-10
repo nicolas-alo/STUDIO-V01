@@ -372,7 +372,9 @@ public sealed class NdiService : IDisposable
 
     public bool StartSender(string name)
     {
-        if (!Initialize() || _sendCreate is null)
+        // Algunos runtimes exponen solo send_create_v2; aceptar cualquiera
+        // de las dos funciones evita que la salida falle antes de intentar v2.
+        if (!Initialize() || (_sendCreate is null && _sendCreateV2 is null))
             return false;
 
         StopSender();
