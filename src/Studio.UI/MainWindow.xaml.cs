@@ -1316,14 +1316,24 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private static string? FindFfmpeg()
     {
-        var candidates = new[]
+        var candidates = new List<string>
         {
             Path.Combine(AppContext.BaseDirectory, "tools", "ffmpeg.exe"),
             Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe"),
             Path.Combine(Environment.CurrentDirectory, "tools", "ffmpeg.exe")
         };
-        foreach (var candidate in candidates)
+
+        // También permite usar FFmpeg si está instalado globalmente y agregado al PATH de Windows.
+        var pathValue = Environment.GetEnvironmentVariable("PATH");
+        if (!string.IsNullOrWhiteSpace(pathValue))
+        {
+            foreach (var directory in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                candidates.Add(Path.Combine(directory.Trim('"'), "ffmpeg.exe"));
+        }
+
+        foreach (var candidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
             if (File.Exists(candidate)) return candidate;
+
         return null;
     }
 
