@@ -1031,7 +1031,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         if (_srtOutput.IsActive && !_srtFirstFrameReported)
         {
             _srtFirstFrameReported = true;
-            _ = Dispatcher.BeginInvoke(() => SrtStatusText.Text = "SRT Caller: enviando cuadros del programa");
+            _ = Dispatcher.BeginInvoke(() => SrtStatusText.Text = "SRT Listener: enviando cuadros del programa");
         }
         if (_rtmpOutput.IsActive && !_rtmpFirstFrameReported)
         {
@@ -1167,7 +1167,6 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         if (_config is null) return;
         YoutubeServerBox.Text = string.IsNullOrWhiteSpace(_config.YoutubeServer) ? "rtmps://a.rtmps.youtube.com/live2" : _config.YoutubeServer;
         YoutubeKeyBox.Password = _config.YoutubeKey ?? "";
-        SrtHostBox.Text = _config.SrtHost ?? "";
         SrtPortBox.Text = (_config.SrtPort > 0 ? _config.SrtPort : 9000).ToString();
         RefreshLocalIpAddresses();
         if (!string.IsNullOrWhiteSpace(_config.SrtLocalIp)) SrtLocalIpCombo.SelectedItem = _config.SrtLocalIp;
@@ -1222,12 +1221,18 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private void SrtStart_Click(object sender, RoutedEventArgs e)
     {
-        var host = SrtHostBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(host) || !int.TryParse(SrtPortBox.Text.Trim(), out var port) || port < 1 || port > 65535) { SrtStatusText.Text = "Ingresá el host receptor y un puerto válido (1–65535)."; return; }
-        var localIp = SrtLocalIpCombo.SelectedItem?.ToString() ?? "";
-        var url = "srt://" + host + ":" + port + "?mode=caller&transtype=live";
+        if (!int.TryParse(SrtPortBox.Text.Trim(), out var port) || port < 1 || port > 65535)
+        {
+            SrtStatusText.Text = "Ingresá un puerto válido (1–65535).";
+            return;
+        }
 
-        if (_config is not null) { _config.SrtHost = host; _config.SrtPort = port; _config.SrtLocalIp = localIp; SaveConfig(); }
+        var localIp = SrtLocalIpCombo.SelectedItem?.ToString() ?? "";
+        // Listener escucha en todas las interfaces; la IP detectada se muestra para que el Caller remoto conecte.
+        var url = $"srt://0.0.0.0:{port}?mode=listener&transtype=live";
+
+        if (_config is not null) { _config.SrtPort = port; _config.SrtLocalIp = localIp; SaveConfig(); }
+        SrtStatusText.Text = $"SRT Listener: escuchando en {localIp}:{port}…";
         StartStreamOutput(_srtOutput, url, false);
     }
 
@@ -1299,7 +1304,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             StreamOutputStatus.Text = (rtmp ? "YOUTUBE RTMP" : "SRT CALLER") + ": iniciando • 1920×1080 • 29.97 FPS";
             Log(StreamOutputStatus.Text);
             if (rtmp) { YoutubeStatusText.Text = "YouTube RTMP: conectando…"; RtmpStartButton2.IsEnabled = false; RtmpStopButton2.IsEnabled = true; RtmpStartButton.IsEnabled = false; RtmpStopButton.IsEnabled = true; }
-            else { SrtStatusText.Text = "SRT Caller: conectando…"; SrtStartButton2.IsEnabled = false; SrtStopButton2.IsEnabled = true; SrtStartButton.IsEnabled = false; SrtStopButton.IsEnabled = true; }
+            else { SrtStatusText.Text = "SRT Listener: esperando conexión…"; SrtStartButton2.IsEnabled = false; SrtStopButton2.IsEnabled = true; SrtStartButton.IsEnabled = false; SrtStopButton.IsEnabled = true; }
         }
         else
         {
@@ -1312,7 +1317,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     {
         _srtOutput.Stop();
         _srtFirstFrameReported = false;
-        SrtStartButton2.IsEnabled = true; SrtStopButton2.IsEnabled = false; SrtStatusText.Text = "SRT Caller: detenido";
+        SrtStartButton2.IsEnabled = true; SrtStopButton2.IsEnabled = false; SrtStatusText.Text = "SRT Listener: detenido";
         SrtStartButton.IsEnabled = true;
         SrtStopButton.IsEnabled = false;
         StreamOutputStatus.Text = "SRT: detenido";
