@@ -1033,23 +1033,22 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             _lastProgramFrameTimestamp = now;
             _programFrameSequence++;
             // Todas las salidas reciben el mismo fotograma compuesto.
-            // NDI vuelve a enviarse desde este punto (como en la versión funcional):
-            // el pump independiente introducido recientemente rompió la salida NDI.
+            // Mantener NDI serializado con la composición, como en la versión funcional.
             lock (_ndiFrameLock) _latestNdiFrame = composedFrame;
+
+            try
+            {
+                if (_ndiService.IsSenderActive)
+                    _ndiService.SendBgrx(composedFrame, OutputWidth, OutputHeight, OutputWidth * 4);
+            }
+            catch (Exception ex)
+            {
+                Log("NDI SALIDA FRAME ERROR: " + ex);
+                _ = Dispatcher.BeginInvoke(() => NdiOutputStatus.Text = "NDI SALIDA ERROR — " + ex.Message);
+            }
 
             _srtOutput.WriteFrame(composedFrame);
             _rtmpOutput.WriteFrame(composedFrame);
-        }
-
-        try
-        {
-            if (_ndiService.IsSenderActive)
-                _ndiService.SendBgrx(composedFrame, OutputWidth, OutputHeight, OutputWidth * 4);
-        }
-        catch (Exception ex)
-        {
-            Log("NDI SALIDA FRAME ERROR: " + ex);
-            _ = Dispatcher.BeginInvoke(() => NdiOutputStatus.Text = "NDI SALIDA ERROR — " + ex.Message);
         }
 
         if (_srtOutput.IsActive && !_srtFirstFrameReported)
