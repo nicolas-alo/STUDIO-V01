@@ -95,8 +95,10 @@ public partial class MainWindow : Window
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         Log("INICIO STUDIO V01 ETAPA 3 — NDI");
-        // El preview consume exactamente el último fotograma compuesto.
+        // Preview y NDI consumen la misma composición publicada, con workers
+        // desacoplados de los lectores de cámara.
         _ = Task.Run(() => PreviewOutputPumpAsync(_ndiPumpCts.Token));
+        _ = Task.Run(() => NdiOutputPumpAsync(_ndiPumpCts.Token));
         StatusText.Text = "VENTANA ABIERTA — CARGANDO...";
         try
         {
