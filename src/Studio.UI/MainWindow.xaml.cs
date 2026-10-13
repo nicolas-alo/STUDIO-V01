@@ -95,7 +95,7 @@ public partial class MainWindow : Window
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         Log("INICIO STUDIO V01 ETAPA 3 — NDI");
-        _ = Task.Run(() => NdiOutputPumpAsync(_ndiPumpCts.Token));
+        // El preview consume exactamente el último fotograma compuesto.
         _ = Task.Run(() => PreviewOutputPumpAsync(_ndiPumpCts.Token));
         StatusText.Text = "VENTANA ABIERTA — CARGANDO...";
         try
@@ -1032,11 +1032,24 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             if (now - _lastProgramFrameTimestamp < minTicks) return;
             _lastProgramFrameTimestamp = now;
             _programFrameSequence++;
-            // NDI recibe el último cuadro desde un hilo dedicado; nunca bloquea la captura.
+            // Todas las salidas reciben el mismo fotograma compuesto.
+            // NDI vuelve a enviarse desde este punto (como en la versión funcional):
+            // el pump independiente introducido recientemente rompió la salida NDI.
             lock (_ndiFrameLock) _latestNdiFrame = composedFrame;
 
             _srtOutput.WriteFrame(composedFrame);
             _rtmpOutput.WriteFrame(composedFrame);
+        }
+
+        try
+        {
+            if (_ndiService.IsSenderActive)
+                _ndiService.SendBgrx(composedFrame, OutputWidth, OutputHeight, OutputWidth * 4);
+        }
+        catch (Exception ex)
+        {
+            Log("NDI SALIDA FRAME ERROR: " + ex);
+            _ = Dispatcher.BeginInvoke(() => NdiOutputStatus.Text = "NDI SALIDA ERROR — " + ex.Message);
         }
 
         if (_srtOutput.IsActive && !_srtFirstFrameReported)
@@ -1078,32 +1091,6 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                     });
                 }
                 catch (Exception ex) { Log("PREVIEW FINAL ERROR: " + ex.Message); }
-            }
-
-            try { await Task.Delay(interval, token).ConfigureAwait(false); }
-            catch (OperationCanceledException) { break; }
-        }
-    }
-
-    private async Task NdiOutputPumpAsync(CancellationToken token)
-    {
-        var interval = TimeSpan.FromMilliseconds(1001d / 30d);
-        while (!token.IsCancellationRequested)
-        {
-            byte[]? frame;
-            lock (_ndiFrameLock) frame = _latestNdiFrame;
-
-            if (frame is not null && _ndiService.IsSenderActive)
-            {
-                try
-                {
-                    _ndiService.SendBgrx(frame, OutputWidth, OutputHeight, OutputWidth * 4);
-                }
-                catch (Exception ex)
-                {
-                    Log("NDI SALIDA FRAME ERROR: " + ex);
-                    _ = Dispatcher.BeginInvoke(() => NdiOutputStatus.Text = "NDI SALIDA ERROR — " + ex.Message);
-                }
             }
 
             try { await Task.Delay(interval, token).ConfigureAwait(false); }
