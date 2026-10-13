@@ -1184,8 +1184,9 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         {
             try
             {
-                // Las vistas de grilla/programación no llevan overlays: durante
-                // esos modos no capturamos PNG ni consumimos CPU innecesariamente.
+                // Las fuentes HTML y la grilla son limpias. No capturar overlays
+                // cuando no forman parte del programa, pero mantener las WebViews
+                // vivas para que sus relojes y datos sigan actualizándose.
                 var mode = await Dispatcher.InvokeAsync(() => new
                 {
                     CleanSource = _quadProgramActive || _htmlProgramActive,
@@ -1194,48 +1195,51 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
                 if (mode.CleanSource || mode.Slot < 0)
                 {
-                    // Las páginas siguen renderizando, pero no capturamos capas
-                    // que no forman parte de la salida actual. Conservamos los
-                    // últimos cuadros hasta volver a una cámara.
                     await Task.Delay(50);
                     continue;
                 }
-                else
+
+                var slot = mode.Slot;
+                var enabled = await Dispatcher.InvokeAsync(() => new[]
                 {
-                    var slot = mode.Slot;
-                    var enabled = await Dispatcher.InvokeAsync(() => new[]
-                    {
-                        _climateEnabled[slot],
-                        _logoEnabled[slot],
-                        _newsEnabled[slot]
-                    });
+                    _climateEnabled[slot],
+                    _logoEnabled[slot],
+                    _newsEnabled[slot]
+                });
 
-                    // Capturar las capas en paralelo: las capturas PNG de WebView2
-                    // son costosas y en serie cada capa esperaba a que terminaran
-                    // las anteriores, bajando mucho los FPS de los overlays.
-                    var captures = await Task.WhenAll(
-                        enabled[0] ? CaptureWebViewFrameAsync(_climateOverlay, true) : Task.FromResult<byte[]?>(null),
-                        enabled[1] ? CaptureWebViewFrameAsync(_logoOverlay, true) : Task.FromResult<byte[]?>(null),
-                        enabled[2] ? CaptureWebViewFrameAsync(_newsOverlay, true) : Task.FromResult<byte[]?>(null));
-                    var climate = captures[0];
-                    var logo = captures[1];
-                    var news = captures[2];
+                // Si un overlay se desactiva, limpiar su último frame inmediatamente:
+                // no debe reaparecer congelado cuando se vuelva a activar.
+                lock (_overlayFrameLock)
+                {
+                    if (!enabled[0]) _climateFrame = null;
+                    if (!enabled[1]) _logoFrame = null;
+                    if (!enabled[2]) _newsFrame = null;
+                }
 
-                    lock (_overlayFrameLock)
+                // Ejecutar captura en paralelo, pero no iniciar otra ronda hasta que
+                // finalicen las tres tareas. Esto evita capturas PNG acumuladas
+                // compitiendo con el renderizado de WebView2.
+                var captures = await Task.WhenAll(
+                    enabled[0] ? CaptureWebViewFrameAsync(_climateOverlay, true) : Task.FromResult<byte[]?>(null),
+                    enabled[1] ? CaptureWebViewFrameAsync(_logoOverlay, true) : Task.FromResult<byte[]?>(null),
+                    enabled[2] ? CaptureWebViewFrameAsync(_newsOverlay, true) : Task.FromResult<byte[]?>(null));
+
+                lock (_overlayFrameLock)
+                {
+                    // Si la fuente cambió mientras capturábamos, no publicar frames
+                    // de una ronda antigua sobre la nueva cámara.
+                    if (!_quadProgramActive && !_htmlProgramActive && GetActiveOverlaySlot() == slot)
                     {
-                        if (!enabled[0]) _climateFrame = null;
-                        else if (climate is not null) _climateFrame = climate;
-                        if (!enabled[1]) _logoFrame = null;
-                        else if (logo is not null) _logoFrame = logo;
-                        if (!enabled[2]) _newsFrame = null;
-                        else if (news is not null) _newsFrame = news;
+                        if (enabled[0] && captures[0] is not null) _climateFrame = captures[0];
+                        if (enabled[1] && captures[1] is not null) _logoFrame = captures[1];
+                        if (enabled[2] && captures[2] is not null) _newsFrame = captures[2];
                     }
                 }
             }
             catch (Exception ex) { Log("CAPTURA OVERLAYS ERROR: " + ex.Message); }
 
-            // WebView2.CapturePreviewAsync es caro; permitir que la vista vuelva
-            // a pintar antes de pedir otra captura. La captura nunca debe solaparse.
+            // Ceder el ciclo de UI/Chromium sin el throttle de 50 ms original;
+            // Task.WhenAll garantiza que las capturas de una ronda no se solapen.
             await Task.Delay(16);
         }
     }
