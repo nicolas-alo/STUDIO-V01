@@ -1027,18 +1027,21 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         var composedFrame = ComposeProgramFrame(frame);
         lock (_programFrameLock)
         {
-            // Limita la distribución a 29.97 fps incluso si las cuatro cámaras
-            // generan cuadros en paralelo.
+            // Limita la distribución a 29.97 fps incluso si las fuentes generan
+            // cuadros en paralelo. La composición se publica como unidad indivisible.
             var now = Stopwatch.GetTimestamp();
             var minTicks = Stopwatch.Frequency * 1001L / 30000L;
             if (now - _lastProgramFrameTimestamp < minTicks) return;
             _lastProgramFrameTimestamp = now;
-            _programFrameSequence++;
-            // Se publica la misma composición inmutable para preview y para los
-            // tres destinos. NDI tiene su propio emisor para que una llamada nativa
-            // lenta nunca bloquee la lectura de cámara ni las colas SRT/RTMP.
-            lock (_ndiFrameLock) _latestNdiFrame = composedFrame;
 
+            lock (_ndiFrameLock)
+            {
+                _programFrameSequence++;
+                _latestNdiFrame = composedFrame;
+            }
+
+            // Solo publicar el mismo buffer final a los codificadores de red.
+            // Sus propios workers impiden que las conexiones lentas bloqueen cámaras.
             _srtOutput.WriteFrame(composedFrame);
             _rtmpOutput.WriteFrame(composedFrame);
         }
