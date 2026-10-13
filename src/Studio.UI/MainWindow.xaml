@@ -155,6 +155,7 @@
                       Background="#000000"
                       ClipToBounds="True">
                     <Grid x:Name="HtmlHost" Visibility="Visible"/>
+                    <Grid x:Name="HtmlHost2" Visibility="Visible"/>
                     <Image x:Name="PreviewImage" Stretch="Fill" Visibility="Collapsed"/>
                     <Grid x:Name="QuadPreview" Visibility="Collapsed" Background="#080808">
                         <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="*"/></Grid.RowDefinitions>
