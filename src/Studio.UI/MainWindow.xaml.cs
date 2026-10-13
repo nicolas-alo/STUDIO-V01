@@ -62,6 +62,7 @@ public partial class MainWindow : Window
     private readonly string _logPath = Path.Combine(AppContext.BaseDirectory, "studio.log");
     private WebView2? _audioPlayer;
     private WebView2? _htmlPreview;
+    private WebView2? _htmlPreview2;
     private WebView2? _climateOverlay;
     private WebView2? _logoOverlay;
     private WebView2? _newsOverlay;
@@ -124,6 +125,7 @@ public partial class MainWindow : Window
             }
 
             LoadOutputSettings();
+            await InitializeHtmlProgramViewsAsync();
             _cycleTimer.Interval = TimeSpan.FromSeconds(Math.Max(1, _config.CycleSeconds));
             _cycleTimer.Start();
 
@@ -265,6 +267,21 @@ public partial class MainWindow : Window
         if (parts.Length != 2 || !int.TryParse(parts[0], out var slot) || slot < 0 || slot > 4) return;
 
         var enabled = button.IsChecked == true;
+        // Invalida cualquier captura que haya empezado antes del cambio del botón.
+        Interlocked.Increment(ref _activeOverlayGeneration);
+        if (!enabled)
+        {
+            lock (_overlayFrameLock)
+            {
+                switch (parts[1])
+                {
+                    case "climate": _climateFrame = null; break;
+                    case "logo": _logoFrame = null; break;
+                    case "news": _newsFrame = null; break;
+                }
+            }
+        }
+
         switch (parts[1])
         {
             case "climate": _climateEnabled[slot] = enabled; break;
@@ -362,6 +379,11 @@ public partial class MainWindow : Window
             _htmlPreview = new WebView2();
             HtmlHost.Children.Add(_htmlPreview);
         }
+        if (_htmlPreview2 is null)
+        {
+            _htmlPreview2 = new WebView2();
+            HtmlHost2.Children.Add(_htmlPreview2);
+        }
         if (_climateOverlay is null)
         {
             _climateOverlay = new WebView2 { IsHitTestVisible = false };
@@ -409,6 +431,47 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         }
     }
 
+    private async Task InitializeHtmlProgramViewsAsync()
+    {
+        if (_config is null) return;
+        var htmlSources = _config.Sources
+            .Where(s => s.Type.Equals("HTML", StringComparison.OrdinalIgnoreCase))
+            .Take(2)
+            .ToList();
+        var views = new[] { _htmlPreview, _htmlPreview2 };
+
+        for (var i = 0; i < htmlSources.Count && i < views.Length; i++)
+        {
+            var view = views[i];
+            if (view is null) continue;
+            try
+            {
+                await view.EnsureCoreWebView2Async();
+                view.DefaultBackgroundColor = System.Drawing.Color.Transparent;
+                await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(@"
+                    (() => {
+                        const style = document.createElement('style');
+                        style.textContent = 'html,body{background:transparent!important;background-color:transparent!important;margin:0!important;}';
+                        document.documentElement.appendChild(style);
+                    })();
+                ");
+                var uri = new Uri(htmlSources[i].Url);
+                if (view.Source is null || !string.Equals(view.Source.AbsoluteUri, uri.AbsoluteUri, StringComparison.OrdinalIgnoreCase))
+                    view.Source = uri;
+            }
+            catch (Exception ex)
+            {
+                Log($"HTML EN SEGUNDO PLANO [{i + 1}] ERROR: {ex.Message}");
+            }
+        }
+
+        HtmlHost.Visibility = Visibility.Visible;
+        HtmlHost2.Visibility = Visibility.Visible;
+        HtmlHost.Opacity = 0;
+        HtmlHost2.Opacity = 0;
+        await Dispatcher.InvokeAsync(() => ResizeProgramPreview(), DispatcherPriority.Loaded);
+    }
+
     private async Task ShowHtmlAsync(string url)
     {
         _quadProgramActive = false;
@@ -420,27 +483,45 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
         try
         {
-            if (_htmlPreview is null) return;
-            await _htmlPreview.EnsureCoreWebView2Async();
-            _htmlPreview.DefaultBackgroundColor = System.Drawing.Color.Transparent;
-            await _htmlPreview.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(@"
-                (() => {
-                    const style = document.createElement('style');
-                    style.textContent = 'html,body{background:transparent!important;background-color:transparent!important;margin:0!important;}';
-                    document.documentElement.appendChild(style);
-                })();
-            ");
-            // No recargar una página ya abierta: mantiene vivos sus relojes,
-            // animaciones y datos al volver a ponerla al aire.
             var requestedUri = new Uri(url);
-            if (_htmlPreview.Source is null || !string.Equals(_htmlPreview.Source.AbsoluteUri, requestedUri.AbsoluteUri, StringComparison.OrdinalIgnoreCase))
-                _htmlPreview.Source = requestedUri;
+            var htmlSources = _config?.Sources
+                .Where(s => s.Type.Equals("HTML", StringComparison.OrdinalIgnoreCase))
+                .ToList() ?? [];
+            var htmlSlot = htmlSources.FindIndex(s =>
+                Uri.TryCreate(s.Url, UriKind.Absolute, out var configuredUri) &&
+                string.Equals(configuredUri.AbsoluteUri, requestedUri.AbsoluteUri, StringComparison.OrdinalIgnoreCase));
+            // Cada página HTML conserva su propia WebView2 para no recargar grilla
+            // al cambiar a programación, ni reiniciar al volver a seleccionarla.
+            var view = htmlSlot <= 0 ? _htmlPreview : _htmlPreview2;
+            if (view is null) return;
+
+            await view.EnsureCoreWebView2Async();
+            view.DefaultBackgroundColor = System.Drawing.Color.Transparent;
+            if (view.CoreWebView2 is not null && view.Source is null)
+            {
+                await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(@"
+                    (() => {
+                        const style = document.createElement('style');
+                        style.textContent = 'html,body{background:transparent!important;background-color:transparent!important;margin:0!important;}';
+                        document.documentElement.appendChild(style);
+                    })();
+                ");
+            }
+
+            if (view.Source is null || !string.Equals(view.Source.AbsoluteUri, requestedUri.AbsoluteUri, StringComparison.OrdinalIgnoreCase))
+                view.Source = requestedUri;
+
+            HtmlHost.Opacity = view == _htmlPreview ? 1 : 0;
+            HtmlHost2.Opacity = view == _htmlPreview2 ? 1 : 0;
+            HtmlHost.Visibility = Visibility.Visible;
+            HtmlHost2.Visibility = Visibility.Visible;
             ResizeProgramPreview();
+            await Dispatcher.InvokeAsync(() => ResizeProgramPreview(), DispatcherPriority.Loaded);
 
             _htmlCaptureCts?.Cancel();
             _htmlCaptureCts?.Dispose();
             _htmlCaptureCts = new CancellationTokenSource();
-            _ = Task.Run(() => CaptureHtmlProgramLoopAsync(_htmlCaptureCts.Token));
+            _ = Task.Run(() => CaptureHtmlProgramLoopAsync(view, _htmlCaptureCts.Token));
         }
         catch (Exception ex)
         {
@@ -757,6 +838,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
         if (_htmlPreview is not null)
             _htmlPreview.ZoomFactor = webZoom;
+        if (_htmlPreview2 is not null)
+            _htmlPreview2.ZoomFactor = webZoom;
         if (_climateOverlay is not null)
             _climateOverlay.ZoomFactor = webZoom;
         if (_logoOverlay is not null)
@@ -1156,11 +1239,14 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
         // Solo las cuatro fuentes de cámara admiten overlays. No reutilizar
         // capas antiguas al emitir grilla, HTML o una entrada NDI limpia.
-        if (!_quadProgramActive && !_htmlProgramActive && _index >= 0 && _index < 4)
+        // Los botones mandan: si un overlay está desactivado, nunca se mezcla
+        // una captura vieja que haya quedado en vuelo en el momento del cambio.
+        var slot = _index;
+        if (!_quadProgramActive && !_htmlProgramActive && slot >= 0 && slot < 4)
         {
-            BlendOverlay(output, climate);
-            BlendOverlay(output, news);
-            BlendOverlay(output, logo);
+            if (_climateEnabled[slot]) BlendOverlay(output, climate);
+            if (_newsEnabled[slot]) BlendOverlay(output, news);
+            if (_logoEnabled[slot]) BlendOverlay(output, logo);
         }
         return output;
     }
@@ -1254,16 +1340,16 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         }
     }
 
-    private async Task CaptureHtmlProgramLoopAsync(CancellationToken token)
+    private async Task CaptureHtmlProgramLoopAsync(WebView2? view, CancellationToken token)
     {
-        // No se encolan capturas: una nueva captura comienza solo cuando termina
-        // la anterior. Se elimina la pausa fija de 100 ms que limitaba la salida
-        // a menos de 10 fps incluso cuando el WebView2 podía producir más cuadros.
+        // Cada página mantiene su propio WebView2 cargado; solo se captura la
+        // seleccionada al aire para evitar competir por el hilo de renderizado.
+        if (view is null) return;
         while (!token.IsCancellationRequested)
         {
             try
             {
-                var frame = await CaptureWebViewFrameAsync(_htmlPreview, true);
+                var frame = await CaptureWebViewFrameAsync(view, true);
                 if (frame is not null && _htmlProgramActive && !token.IsCancellationRequested)
                     PublishProgramFrame(frame);
             }
