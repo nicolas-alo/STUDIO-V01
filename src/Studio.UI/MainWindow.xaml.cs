@@ -1254,7 +1254,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             try
             {
                 var frame = await CaptureWebViewFrameAsync(_htmlPreview, true);
-                if (frame is not null)
+                if (frame is not null && _htmlProgramActive && !token.IsCancellationRequested)
                     PublishProgramFrame(frame);
             }
             catch (OperationCanceledException) { break; }
