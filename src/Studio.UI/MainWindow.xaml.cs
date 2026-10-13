@@ -183,6 +183,7 @@ public partial class MainWindow : Window
         Interlocked.Increment(ref _activeOverlayGeneration);
         await StopCurrentAsync();
         UpdateAirCard();
+        SyncOverlayToggleButtons(_index >= 0 && _index < 5 ? _index : -1);
         HideAllOverlays();
         lock (_overlayFrameLock)
         {
@@ -295,6 +296,39 @@ public partial class MainWindow : Window
 
     private int GetActiveOverlaySlot() =>
         _index >= 0 && _index <= 4 ? _index : -1;
+
+    // Los botones son por fuente. Al cambiar de fuente, reflejar el estado real
+    // guardado en los arrays para que el usuario no vea el botón apagado mientras
+    // la composición conserva el overlay activado para esa fuente.
+    private void SyncOverlayToggleButtons(int slot)
+    {
+        foreach (var button in FindVisualChildren<ToggleButton>(this))
+        {
+            if (button.Tag is not string tag) continue;
+            var parts = tag.Split('|');
+            if (parts.Length != 2 || !int.TryParse(parts[0], out var buttonSlot)) continue;
+            if (buttonSlot != slot) continue;
+
+            button.IsChecked = parts[1] switch
+            {
+                "climate" => _climateEnabled[slot],
+                "logo" => _logoEnabled[slot],
+                "news" => _newsEnabled[slot],
+                _ => false
+            };
+        }
+    }
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject parent) where T : DependencyObject
+    {
+        var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent);
+        for (var i = 0; i < count; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+            if (child is T match) yield return match;
+            foreach (var descendant in FindVisualChildren<T>(child)) yield return descendant;
+        }
+    }
 
     private void HideAllOverlays()
     {
@@ -1334,9 +1368,10 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             }
             catch (Exception ex) { Log("CAPTURA OVERLAYS ERROR: " + ex.Message); }
 
-            // Ceder el ciclo de UI/Chromium sin el throttle de 50 ms original;
-            // Task.WhenAll garantiza que las capturas de una ronda no se solapen.
-            await Task.Delay(16);
+            // CapturePreviewAsync genera PNG y decodifica 1080p: capturar más
+            // rápido que el ritmo de salida añade carga sin mejorar los 29.97 fps.
+            // Las capturas siguen siendo paralelas y nunca se solapan entre rondas.
+            await Task.Delay(33);
         }
     }
 
@@ -1352,6 +1387,9 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                 var frame = await CaptureWebViewFrameAsync(view, true);
                 if (frame is not null && _htmlProgramActive && !token.IsCancellationRequested)
                     PublishProgramFrame(frame);
+                // CapturePreviewAsync es costoso; mantenerlo cerca de 29.97 fps
+                // evita saturar Chromium y deja respirar al hilo de la interfaz.
+                await Task.Delay(33, token);
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
