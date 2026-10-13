@@ -75,10 +75,12 @@ public partial class MainWindow : Window
     private bool _srtFirstFrameReported;
     private bool _rtmpFirstFrameReported;
     private readonly object _overlayFrameLock = new();
+    private readonly object _overlayStateLock = new();
     private byte[]? _climateFrame;
     private byte[]? _logoFrame;
     private byte[]? _newsFrame;
     private CancellationTokenSource? _htmlCaptureCts;
+    private WebView2? _htmlCaptureView;
 
     public MainWindow()
     {
@@ -181,6 +183,10 @@ public partial class MainWindow : Window
         if (_config is null) return;
 
         Interlocked.Increment(ref _activeOverlayGeneration);
+        // Al cambiar de fuente, descartar inmediatamente cualquier captura HTML
+        // en vuelo para no publicar un fotograma de la página anterior.
+        _htmlProgramActive = false;
+        _quadProgramActive = false;
         await StopCurrentAsync();
         UpdateAirCard();
         SyncOverlayToggleButtons(_index >= 0 && _index < 5 ? _index : -1);
@@ -283,11 +289,14 @@ public partial class MainWindow : Window
             }
         }
 
-        switch (parts[1])
+        lock (_overlayStateLock)
         {
-            case "climate": _climateEnabled[slot] = enabled; break;
-            case "logo": _logoEnabled[slot] = enabled; break;
-            case "news": _newsEnabled[slot] = enabled; break;
+            switch (parts[1])
+            {
+                case "climate": _climateEnabled[slot] = enabled; break;
+                case "logo": _logoEnabled[slot] = enabled; break;
+                case "news": _newsEnabled[slot] = enabled; break;
+            }
         }
 
         if (GetActiveOverlaySlot() == slot)
@@ -509,7 +518,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private async Task ShowHtmlAsync(string url)
     {
         _quadProgramActive = false;
-        _htmlProgramActive = true;
+        _htmlProgramActive = false;
         HideAllOverlays();
         PreviewImage.Visibility = Visibility.Collapsed;
         QuadPreview.Visibility = Visibility.Collapsed;
@@ -552,10 +561,17 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             ResizeProgramPreview();
             await Dispatcher.InvokeAsync(() => ResizeProgramPreview(), DispatcherPriority.Loaded);
 
-            _htmlCaptureCts?.Cancel();
-            _htmlCaptureCts?.Dispose();
-            _htmlCaptureCts = new CancellationTokenSource();
-            _ = Task.Run(() => CaptureHtmlProgramLoopAsync(view, _htmlCaptureCts.Token));
+            // El trabajador se conserva entre fuentes y apunta a la WebView
+            // seleccionada. La página no se vuelve a navegar al recuperar el aire.
+            _htmlCaptureView = view;
+            if (_htmlCaptureCts is null || _htmlCaptureCts.IsCancellationRequested)
+            {
+                _htmlCaptureCts?.Dispose();
+                _htmlCaptureCts = new CancellationTokenSource();
+                var captureToken = _htmlCaptureCts.Token;
+                _ = Task.Run(() => CaptureHtmlProgramLoopAsync(captureToken));
+            }
+            _htmlProgramActive = true;
         }
         catch (Exception ex)
         {
@@ -1275,12 +1291,20 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         // capas antiguas al emitir grilla, HTML o una entrada NDI limpia.
         // Los botones mandan: si un overlay está desactivado, nunca se mezcla
         // una captura vieja que haya quedado en vuelo en el momento del cambio.
-        var slot = _index;
+        int slot;
+        bool climateEnabled, newsEnabled, logoEnabled;
+        lock (_overlayStateLock)
+        {
+            slot = _index;
+            climateEnabled = slot >= 0 && slot < 4 && _climateEnabled[slot];
+            newsEnabled = slot >= 0 && slot < 4 && _newsEnabled[slot];
+            logoEnabled = slot >= 0 && slot < 4 && _logoEnabled[slot];
+        }
         if (!_quadProgramActive && !_htmlProgramActive && slot >= 0 && slot < 4)
         {
-            if (_climateEnabled[slot]) BlendOverlay(output, climate);
-            if (_newsEnabled[slot]) BlendOverlay(output, news);
-            if (_logoEnabled[slot]) BlendOverlay(output, logo);
+            if (climateEnabled) BlendOverlay(output, climate);
+            if (newsEnabled) BlendOverlay(output, news);
+            if (logoEnabled) BlendOverlay(output, logo);
         }
         return output;
     }
@@ -1330,11 +1354,17 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
                 var slot = mode.Slot;
                 var generation = Volatile.Read(ref _activeOverlayGeneration);
-                var enabled = await Dispatcher.InvokeAsync(() => new[]
+                var enabled = await Dispatcher.InvokeAsync(() =>
                 {
-                    _climateEnabled[slot],
-                    _logoEnabled[slot],
-                    _newsEnabled[slot]
+                    lock (_overlayStateLock)
+                    {
+                        return new[]
+                        {
+                            _climateEnabled[slot],
+                            _logoEnabled[slot],
+                            _newsEnabled[slot]
+                        };
+                    }
                 });
 
                 // Limpiar capas desactivadas sin conservar una imagen vieja.
@@ -1375,20 +1405,38 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         }
     }
 
-    private async Task CaptureHtmlProgramLoopAsync(WebView2? view, CancellationToken token)
+    private async Task CaptureHtmlProgramLoopAsync(CancellationToken token)
     {
-        // Cada página mantiene su propio WebView2 cargado; solo se captura la
-        // seleccionada al aire para evitar competir por el hilo de renderizado.
-        if (view is null) return;
+        // Mantener un único worker; la WebView se conserva cargada incluso fuera
+        // del aire, pero solo capturamos PNG cuando una página HTML está activa.
         while (!token.IsCancellationRequested)
         {
             try
             {
+                if (!_htmlProgramActive)
+                {
+                    await Task.Delay(100, token);
+                    continue;
+                }
+
+                var view = _htmlCaptureView;
+                if (view is null)
+                {
+                    await Task.Delay(50, token);
+                    continue;
+                }
+
                 var frame = await CaptureWebViewFrameAsync(view, true);
-                if (frame is not null && _htmlProgramActive && !token.IsCancellationRequested)
+                // Descartar el frame si cambió la fuente mientras WebView2 capturaba.
+                if (frame is not null &&
+                    _htmlProgramActive &&
+                    ReferenceEquals(view, _htmlCaptureView) &&
+                    !token.IsCancellationRequested)
+                {
                     PublishProgramFrame(frame);
-                // CapturePreviewAsync es costoso; mantenerlo cerca de 29.97 fps
-                // evita saturar Chromium y deja respirar al hilo de la interfaz.
+                }
+
+                // CapturePreviewAsync es costoso; mantenerlo cerca de 29.97 fps.
                 await Task.Delay(33, token);
             }
             catch (OperationCanceledException) { break; }
@@ -1652,9 +1700,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private async Task StopCurrentAsync()
     {
-        _htmlCaptureCts?.Cancel();
-        _htmlCaptureCts?.Dispose();
-        _htmlCaptureCts = null;
+        // El capturador HTML es persistente entre cambios de fuente. Se cancela
+        // solamente al cerrar la ventana, no cada vez que una cámara vuelve al aire.
         _sourceCts?.Cancel();
         _sourceCts?.Dispose();
         _sourceCts = null;
@@ -1691,6 +1738,10 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     {
         _cycleTimer.Stop();
         _ndiPumpCts.Cancel();
+        _htmlCaptureCts?.Cancel();
+        _htmlCaptureCts?.Dispose();
+        _htmlCaptureCts = null;
+        _htmlCaptureView = null;
         await StopCurrentAsync();
         _srtOutput.Dispose();
         _rtmpOutput.Dispose();
