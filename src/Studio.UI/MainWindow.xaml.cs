@@ -1205,8 +1205,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                     _newsEnabled[slot]
                 });
 
-                // Si un overlay se desactiva, limpiar su último frame inmediatamente:
-                // no debe reaparecer congelado cuando se vuelva a activar.
+                // Limpiar capas desactivadas sin conservar una imagen vieja.
                 lock (_overlayFrameLock)
                 {
                     if (!enabled[0]) _climateFrame = null;
