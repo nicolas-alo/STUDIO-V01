@@ -178,9 +178,16 @@ public partial class MainWindow : Window
     {
         if (_config is null) return;
 
+        Interlocked.Increment(ref _activeOverlayGeneration);
         await StopCurrentAsync();
         UpdateAirCard();
         HideAllOverlays();
+        lock (_overlayFrameLock)
+        {
+            _climateFrame = null;
+            _logoFrame = null;
+            _newsFrame = null;
+        }
 
         if (_index == 4)
         {
@@ -1019,6 +1026,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private readonly CancellationTokenSource _ndiPumpCts = new();
     private long _programFrameSequence;
     private long _lastProgramFrameTimestamp;
+    private int _activeOverlayGeneration;
 
     private void PublishProgramFrame(byte[] frame)
     {
@@ -1201,6 +1209,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                 }
 
                 var slot = mode.Slot;
+                var generation = Volatile.Read(ref _activeOverlayGeneration);
                 var enabled = await Dispatcher.InvokeAsync(() => new[]
                 {
                     _climateEnabled[slot],
@@ -1228,7 +1237,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                 {
                     // Si la fuente cambió mientras capturábamos, no publicar frames
                     // de una ronda antigua sobre la nueva cámara.
-                    if (!_quadProgramActive && !_htmlProgramActive && GetActiveOverlaySlot() == slot)
+                    if (generation == Volatile.Read(ref _activeOverlayGeneration) &&
+                        !_quadProgramActive && !_htmlProgramActive && GetActiveOverlaySlot() == slot)
                     {
                         if (enabled[0] && captures[0] is not null) _climateFrame = captures[0];
                         if (enabled[1] && captures[1] is not null) _logoFrame = captures[1];
