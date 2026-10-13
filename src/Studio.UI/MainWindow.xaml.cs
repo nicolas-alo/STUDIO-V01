@@ -1017,6 +1017,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private readonly CancellationTokenSource _ndiPumpCts = new();
     private long _programFrameSequence;
     private long _lastProgramFrameTimestamp;
+    private long _lastOverlayCaptureTimestamp;
+    private int _overlayCaptureInProgress;
 
     private void PublishProgramFrame(byte[] frame)
     {
@@ -1032,20 +1034,10 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             if (now - _lastProgramFrameTimestamp < minTicks) return;
             _lastProgramFrameTimestamp = now;
             _programFrameSequence++;
-            // Todas las salidas reciben el mismo fotograma compuesto.
-            // Mantener NDI serializado con la composición, como en la versión funcional.
+            // Se publica la misma composición inmutable para preview y para los
+            // tres destinos. NDI tiene su propio emisor para que una llamada nativa
+            // lenta nunca bloquee la lectura de cámara ni las colas SRT/RTMP.
             lock (_ndiFrameLock) _latestNdiFrame = composedFrame;
-
-            try
-            {
-                if (_ndiService.IsSenderActive)
-                    _ndiService.SendBgrx(composedFrame, OutputWidth, OutputHeight, OutputWidth * 4);
-            }
-            catch (Exception ex)
-            {
-                Log("NDI SALIDA FRAME ERROR: " + ex);
-                _ = Dispatcher.BeginInvoke(() => NdiOutputStatus.Text = "NDI SALIDA ERROR — " + ex.Message);
-            }
 
             _srtOutput.WriteFrame(composedFrame);
             _rtmpOutput.WriteFrame(composedFrame);
@@ -1066,12 +1058,20 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private async Task PreviewOutputPumpAsync(CancellationToken token)
     {
         var interval = TimeSpan.FromMilliseconds(1001d / 30d);
+        long lastPresentedSequence = -1;
         while (!token.IsCancellationRequested)
         {
             byte[]? frame;
-            lock (_ndiFrameLock) frame = _latestNdiFrame;
+            long sequence;
+            lock (_ndiFrameLock)
+            {
+                frame = _latestNdiFrame;
+                sequence = _programFrameSequence;
+            }
 
-            if (frame is not null)
+            // No recrear el bitmap ni poner trabajo en el Dispatcher si no llegó
+            // una nueva composición desde el ciclo anterior.
+            if (frame is not null && sequence != lastPresentedSequence)
             {
                 try
                 {
@@ -1081,15 +1081,48 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                     await Dispatcher.InvokeAsync(() =>
                     {
                         if (token.IsCancellationRequested) return;
-                        // El WebView HTML sigue vivo detrás, pero el preview
-                        // muestra siempre el fotograma final que va a las salidas.
+                        // El preview presenta el mismo fotograma compuesto distribuido.
                         HtmlHost.Visibility = Visibility.Visible;
                         QuadPreview.Visibility = Visibility.Collapsed;
                         PreviewImage.Source = bitmap;
                         PreviewImage.Visibility = Visibility.Visible;
-                    });
+                    }, DispatcherPriority.Render);
+                    lastPresentedSequence = sequence;
                 }
                 catch (Exception ex) { Log("PREVIEW FINAL ERROR: " + ex.Message); }
+            }
+
+            try { await Task.Delay(interval, token).ConfigureAwait(false); }
+            catch (OperationCanceledException) { break; }
+        }
+    }
+
+    private async Task NdiOutputPumpAsync(CancellationToken token)
+    {
+        var interval = TimeSpan.FromMilliseconds(1001d / 30d);
+        long lastSentSequence = -1;
+        while (!token.IsCancellationRequested)
+        {
+            byte[]? frame;
+            long sequence;
+            lock (_ndiFrameLock)
+            {
+                frame = _latestNdiFrame;
+                sequence = _programFrameSequence;
+            }
+
+            if (frame is not null && sequence != lastSentSequence && _ndiService.IsSenderActive)
+            {
+                try
+                {
+                    _ndiService.SendBgrx(frame, OutputWidth, OutputHeight, OutputWidth * 4);
+                    lastSentSequence = sequence;
+                }
+                catch (Exception ex)
+                {
+                    Log("NDI SALIDA FRAME ERROR: " + ex);
+                    _ = Dispatcher.BeginInvoke(() => NdiOutputStatus.Text = "NDI SALIDA ERROR — " + ex.Message);
+                }
             }
 
             try { await Task.Delay(interval, token).ConfigureAwait(false); }
@@ -1199,8 +1232,9 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             }
             catch (Exception ex) { Log("CAPTURA OVERLAYS ERROR: " + ex.Message); }
 
-            // Captura sin cola; intervalo corto para no limitar reloj/logo.
-            await Task.Delay(50);
+            // WebView2.CapturePreviewAsync es caro; permitir que la vista vuelva
+            // a pintar antes de pedir otra captura. La captura nunca debe solaparse.
+            await Task.Delay(16);
         }
     }
 
