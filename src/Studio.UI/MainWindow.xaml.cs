@@ -1019,8 +1019,6 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private readonly CancellationTokenSource _ndiPumpCts = new();
     private long _programFrameSequence;
     private long _lastProgramFrameTimestamp;
-    private long _lastOverlayCaptureTimestamp;
-    private int _overlayCaptureInProgress;
 
     private void PublishProgramFrame(byte[] frame)
     {
