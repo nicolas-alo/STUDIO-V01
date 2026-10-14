@@ -267,9 +267,9 @@ public partial class MainWindow : Window
         }
         else
         {
-            int currentIndex;
-            lock (_overlayStateLock) currentIndex = _index;
-            AirStatusText.Text = "AL AIRE: " + (currentIndex == 5 ? "GRILLA" : currentIndex == 6 ? "PLACA DE PROGRAMAS" : "—");
+            int airIndex;
+            lock (_overlayStateLock) airIndex = _index;
+            AirStatusText.Text = "AL AIRE: " + (airIndex == 5 ? "GRILLA" : airIndex == 6 ? "PLACA DE PROGRAMAS" : "—");
         }
     }
 
