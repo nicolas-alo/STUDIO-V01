@@ -1,16 +1,33 @@
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Windows;
 
 namespace Studio.UI;
 
 public partial class App : Application
 {
+    private const string InstanceMutexName = @"Local\StudioV01.SingleInstance";
+    private Mutex? _instanceMutex;
     private static readonly string StartupLogPath =
         Path.Combine(AppContext.BaseDirectory, "startup.log");
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        bool createdNew;
+        _instanceMutex = new Mutex(true, InstanceMutexName, out createdNew);
+        if (!createdNew)
+        {
+            WriteStartup("Inicio bloqueado: ya existe una instancia de STUDIO V01.");
+            MessageBox.Show(
+                "STUDIO V01 ya está abierto. Cerrá la otra ventana antes de iniciar otra instancia.",
+                "STUDIO V01",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            Shutdown();
+            return;
+        }
+
         WriteStartup("=== STUDIO V01 START ===");
         WriteStartup("Executable: " + Environment.ProcessPath);
         WriteStartup("BaseDirectory: " + AppContext.BaseDirectory);
@@ -68,6 +85,25 @@ public partial class App : Application
                 MessageBoxImage.Error);
             Shutdown(1);
         }
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        try
+        {
+            _instanceMutex?.ReleaseMutex();
+        }
+        catch (ApplicationException)
+        {
+            // El mutex puede no pertenecer al hilo de salida en un cierre excepcional.
+        }
+        finally
+        {
+            _instanceMutex?.Dispose();
+            _instanceMutex = null;
+        }
+
+        base.OnExit(e);
     }
 
     private static void WriteStartup(string message)

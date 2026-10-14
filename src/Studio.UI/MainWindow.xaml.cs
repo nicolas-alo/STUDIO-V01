@@ -75,10 +75,12 @@ public partial class MainWindow : Window
     private bool _srtFirstFrameReported;
     private bool _rtmpFirstFrameReported;
     private readonly object _overlayFrameLock = new();
+    private readonly object _overlayStateLock = new();
     private byte[]? _climateFrame;
     private byte[]? _logoFrame;
     private byte[]? _newsFrame;
     private CancellationTokenSource? _htmlCaptureCts;
+    private WebView2? _htmlCaptureView;
 
     public MainWindow()
     {
@@ -161,7 +163,7 @@ public partial class MainWindow : Window
         if (_config is null) return;
 
         // Orden de aire: Puente → Puerto → Esquina → Edificio JJ → 4 Cámaras → Grilla → Placa de programas.
-        _index = (_index + 1) % 7;
+        lock (_overlayStateLock) _index = (_index + 1) % 7;
         await ShowCurrentAsync();
     }
 
@@ -172,7 +174,7 @@ public partial class MainWindow : Window
 
         // La selección manual cambia el plano actual, pero no desactiva el ciclo automático de 20 s.
         _manualSelection = false;
-        _index = slot;
+        lock (_overlayStateLock) _index = slot;
         await ShowCurrentAsync();
     }
 
@@ -181,9 +183,15 @@ public partial class MainWindow : Window
         if (_config is null) return;
 
         Interlocked.Increment(ref _activeOverlayGeneration);
+        // Al cambiar de fuente, descartar inmediatamente cualquier captura HTML
+        // en vuelo para no publicar un fotograma de la página anterior.
+        _htmlProgramActive = false;
+        _quadProgramActive = false;
         await StopCurrentAsync();
         UpdateAirCard();
-        SyncOverlayToggleButtons(_index >= 0 && _index < 5 ? _index : -1);
+        int selectedSlot;
+        lock (_overlayStateLock) selectedSlot = _index;
+        SyncOverlayToggleButtons(selectedSlot >= 0 && selectedSlot < 5 ? selectedSlot : -1);
         HideAllOverlays();
         lock (_overlayFrameLock)
         {
@@ -192,7 +200,7 @@ public partial class MainWindow : Window
             _newsFrame = null;
         }
 
-        if (_index == 4)
+        if (selectedSlot == 4)
         {
             StatusText.Text = "4 CÁMARAS • 1920×1080 • 29.97 FPS";
             await ShowQuadAsync();
@@ -201,7 +209,7 @@ public partial class MainWindow : Window
         }
 
         // Los HTML ocupan las posiciones 5 y 6 del ciclo, pero son las fuentes 4 y 5 del JSON.
-        var sourceIndex = _index >= 5 ? _index - 1 : _index;
+        var sourceIndex = selectedSlot >= 5 ? selectedSlot - 1 : selectedSlot;
         var source = _config.Sources[sourceIndex];
         StatusText.Text = source.Name + " • " + source.Type.ToUpperInvariant() + " • 1920×1080 • 29.97 FPS";
 
@@ -210,8 +218,8 @@ public partial class MainWindow : Window
         else
             await ShowRtspAsync(source.Url);
 
-        if (_index >= 0 && _index < 4)
-            ApplyActiveOverlays(_index);
+        if (selectedSlot >= 0 && selectedSlot < 4)
+            ApplyActiveOverlays(selectedSlot);
     }
 
     private async void SourceCard_Click(object sender, MouseButtonEventArgs e)
@@ -236,7 +244,9 @@ public partial class MainWindow : Window
                 System.Windows.Media.Color.FromRgb(48, 48, 48));
         }
 
-        var active = _index >= 0 && _index <= 6 ? _index : -1;
+        int currentIndex;
+        lock (_overlayStateLock) currentIndex = _index;
+        var active = currentIndex >= 0 && currentIndex <= 6 ? currentIndex : -1;
         if (active >= 0)
         {
             cards[active].Background = new System.Windows.Media.SolidColorBrush(
@@ -257,7 +267,9 @@ public partial class MainWindow : Window
         }
         else
         {
-            AirStatusText.Text = "AL AIRE: " + (_index == 5 ? "GRILLA" : _index == 6 ? "PLACA DE PROGRAMAS" : "—");
+            int airIndex;
+            lock (_overlayStateLock) airIndex = _index;
+            AirStatusText.Text = "AL AIRE: " + (airIndex == 5 ? "GRILLA" : airIndex == 6 ? "PLACA DE PROGRAMAS" : "—");
         }
     }
 
@@ -283,19 +295,26 @@ public partial class MainWindow : Window
             }
         }
 
-        switch (parts[1])
+        lock (_overlayStateLock)
         {
-            case "climate": _climateEnabled[slot] = enabled; break;
-            case "logo": _logoEnabled[slot] = enabled; break;
-            case "news": _newsEnabled[slot] = enabled; break;
+            switch (parts[1])
+            {
+                case "climate": _climateEnabled[slot] = enabled; break;
+                case "logo": _logoEnabled[slot] = enabled; break;
+                case "news": _newsEnabled[slot] = enabled; break;
+            }
         }
 
         if (GetActiveOverlaySlot() == slot)
             _ = ApplyActiveOverlaysAsync(slot);
     }
 
-    private int GetActiveOverlaySlot() =>
-        _index >= 0 && _index <= 4 ? _index : -1;
+    private int GetActiveOverlaySlot()
+    {
+        int slot;
+        lock (_overlayStateLock) slot = _index;
+        return slot >= 0 && slot <= 4 ? slot : -1;
+    }
 
     // Los botones son por fuente. Al cambiar de fuente, reflejar el estado real
     // guardado en los arrays para que el usuario no vea el botón apagado mientras
@@ -509,11 +528,16 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private async Task ShowHtmlAsync(string url)
     {
         _quadProgramActive = false;
-        _htmlProgramActive = true;
+        _htmlProgramActive = false;
         HideAllOverlays();
-        PreviewImage.Visibility = Visibility.Collapsed;
+        // La única superficie visible del programa es PreviewImage, alimentada
+        // por el fotograma compuesto que también se distribuye a NDI/SRT/YouTube.
+        PreviewImage.Visibility = Visibility.Visible;
         QuadPreview.Visibility = Visibility.Collapsed;
         HtmlHost.Visibility = Visibility.Visible;
+        HtmlHost2.Visibility = Visibility.Visible;
+        HtmlHost.Opacity = 0;
+        HtmlHost2.Opacity = 0;
 
         try
         {
@@ -545,17 +569,26 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             if (view.Source is null || !string.Equals(view.Source.AbsoluteUri, requestedUri.AbsoluteUri, StringComparison.OrdinalIgnoreCase))
                 view.Source = requestedUri;
 
-            HtmlHost.Opacity = view == _htmlPreview ? 1 : 0;
-            HtmlHost2.Opacity = view == _htmlPreview2 ? 1 : 0;
+            // Nunca mostrar el WebView vivo encima del preview: el HTML se
+            // captura y entra en la composición final publicada para todas las salidas.
+            HtmlHost.Opacity = 0;
+            HtmlHost2.Opacity = 0;
             HtmlHost.Visibility = Visibility.Visible;
             HtmlHost2.Visibility = Visibility.Visible;
             ResizeProgramPreview();
             await Dispatcher.InvokeAsync(() => ResizeProgramPreview(), DispatcherPriority.Loaded);
 
-            _htmlCaptureCts?.Cancel();
-            _htmlCaptureCts?.Dispose();
-            _htmlCaptureCts = new CancellationTokenSource();
-            _ = Task.Run(() => CaptureHtmlProgramLoopAsync(view, _htmlCaptureCts.Token));
+            // El trabajador se conserva entre fuentes y apunta a la WebView
+            // seleccionada. La página no se vuelve a navegar al recuperar el aire.
+            _htmlCaptureView = view;
+            if (_htmlCaptureCts is null || _htmlCaptureCts.IsCancellationRequested)
+            {
+                _htmlCaptureCts?.Dispose();
+                _htmlCaptureCts = new CancellationTokenSource();
+                var captureToken = _htmlCaptureCts.Token;
+                _ = Task.Run(() => CaptureHtmlProgramLoopAsync(captureToken));
+            }
+            _htmlProgramActive = true;
         }
         catch (Exception ex)
         {
@@ -572,8 +605,12 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         // Mantener el HTML renderizando detrás de la grilla para que sus
         // animaciones sigan avanzando aunque la fuente no esté al aire.
         HtmlHost.Visibility = Visibility.Visible;
-        PreviewImage.Visibility = Visibility.Collapsed;
-        QuadPreview.Visibility = Visibility.Visible;
+        HtmlHost2.Visibility = Visibility.Visible;
+        HtmlHost.Opacity = 0;
+        HtmlHost2.Opacity = 0;
+        // La grilla se presenta únicamente dentro del frame compuesto común.
+        PreviewImage.Visibility = Visibility.Visible;
+        QuadPreview.Visibility = Visibility.Collapsed;
 
         var sources = _config?.Sources
             .Where(s => s.Type.Equals("RTSP", StringComparison.OrdinalIgnoreCase))
@@ -727,6 +764,9 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         _htmlProgramActive = false;
         // Mantener el HTML renderizando detrás de la cámara.
         HtmlHost.Visibility = Visibility.Visible;
+        HtmlHost2.Visibility = Visibility.Visible;
+        HtmlHost.Opacity = 0;
+        HtmlHost2.Opacity = 0;
         QuadPreview.Visibility = Visibility.Collapsed;
         PreviewImage.Visibility = Visibility.Visible;
 
@@ -946,7 +986,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             _cycleTimer.Stop();
             _manualSelection = true;
             _ndiInputOnAir = false;
-            _index = -1;
+            lock (_overlayStateLock) _index = -1;
 
             await StopCurrentAsync();
 
@@ -997,7 +1037,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             NdiReturnButton.IsEnabled = false;
 
             _manualSelection = false;
-            _index = -1;
+            lock (_overlayStateLock) _index = -1;
 
             Log("NDI: retorno al programa automático.");
             await ShowNextAsync();
@@ -1210,8 +1250,16 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                     {
                         if (token.IsCancellationRequested) return;
                         // El preview presenta el mismo fotograma compuesto distribuido.
+                        // Preview = programa final. No permitir que WebView2 ni
+                        // el mosaico WPF dibujen una segunda composición por encima.
                         HtmlHost.Visibility = Visibility.Visible;
+                        HtmlHost2.Visibility = Visibility.Visible;
+                        HtmlHost.Opacity = 0;
+                        HtmlHost2.Opacity = 0;
                         QuadPreview.Visibility = Visibility.Collapsed;
+                        ClimateHost.Opacity = 0;
+                        LogoHost.Opacity = 0;
+                        NewsHost.Opacity = 0;
                         PreviewImage.Source = bitmap;
                         PreviewImage.Visibility = Visibility.Visible;
                     }, DispatcherPriority.Render);
@@ -1275,12 +1323,20 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         // capas antiguas al emitir grilla, HTML o una entrada NDI limpia.
         // Los botones mandan: si un overlay está desactivado, nunca se mezcla
         // una captura vieja que haya quedado en vuelo en el momento del cambio.
-        var slot = _index;
+        int slot;
+        bool climateEnabled, newsEnabled, logoEnabled;
+        lock (_overlayStateLock)
+        {
+            slot = _index;
+            climateEnabled = slot >= 0 && slot < 4 && _climateEnabled[slot];
+            newsEnabled = slot >= 0 && slot < 4 && _newsEnabled[slot];
+            logoEnabled = slot >= 0 && slot < 4 && _logoEnabled[slot];
+        }
         if (!_quadProgramActive && !_htmlProgramActive && slot >= 0 && slot < 4)
         {
-            if (_climateEnabled[slot]) BlendOverlay(output, climate);
-            if (_newsEnabled[slot]) BlendOverlay(output, news);
-            if (_logoEnabled[slot]) BlendOverlay(output, logo);
+            if (climateEnabled) BlendOverlay(output, climate);
+            if (newsEnabled) BlendOverlay(output, news);
+            if (logoEnabled) BlendOverlay(output, logo);
         }
         return output;
     }
@@ -1330,11 +1386,17 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
                 var slot = mode.Slot;
                 var generation = Volatile.Read(ref _activeOverlayGeneration);
-                var enabled = await Dispatcher.InvokeAsync(() => new[]
+                var enabled = await Dispatcher.InvokeAsync(() =>
                 {
-                    _climateEnabled[slot],
-                    _logoEnabled[slot],
-                    _newsEnabled[slot]
+                    lock (_overlayStateLock)
+                    {
+                        return new[]
+                        {
+                            _climateEnabled[slot],
+                            _logoEnabled[slot],
+                            _newsEnabled[slot]
+                        };
+                    }
                 });
 
                 // Limpiar capas desactivadas sin conservar una imagen vieja.
@@ -1375,20 +1437,38 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         }
     }
 
-    private async Task CaptureHtmlProgramLoopAsync(WebView2? view, CancellationToken token)
+    private async Task CaptureHtmlProgramLoopAsync(CancellationToken token)
     {
-        // Cada página mantiene su propio WebView2 cargado; solo se captura la
-        // seleccionada al aire para evitar competir por el hilo de renderizado.
-        if (view is null) return;
+        // Mantener un único worker; la WebView se conserva cargada incluso fuera
+        // del aire, pero solo capturamos PNG cuando una página HTML está activa.
         while (!token.IsCancellationRequested)
         {
             try
             {
+                if (!_htmlProgramActive)
+                {
+                    await Task.Delay(100, token);
+                    continue;
+                }
+
+                var view = _htmlCaptureView;
+                if (view is null)
+                {
+                    await Task.Delay(50, token);
+                    continue;
+                }
+
                 var frame = await CaptureWebViewFrameAsync(view, true);
-                if (frame is not null && _htmlProgramActive && !token.IsCancellationRequested)
+                // Descartar el frame si cambió la fuente mientras WebView2 capturaba.
+                if (frame is not null &&
+                    _htmlProgramActive &&
+                    ReferenceEquals(view, _htmlCaptureView) &&
+                    !token.IsCancellationRequested)
+                {
                     PublishProgramFrame(frame);
-                // CapturePreviewAsync es costoso; mantenerlo cerca de 29.97 fps
-                // evita saturar Chromium y deja respirar al hilo de la interfaz.
+                }
+
+                // CapturePreviewAsync es costoso; mantenerlo cerca de 29.97 fps.
                 await Task.Delay(33, token);
             }
             catch (OperationCanceledException) { break; }
@@ -1652,9 +1732,8 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
     private async Task StopCurrentAsync()
     {
-        _htmlCaptureCts?.Cancel();
-        _htmlCaptureCts?.Dispose();
-        _htmlCaptureCts = null;
+        // El capturador HTML es persistente entre cambios de fuente. Se cancela
+        // solamente al cerrar la ventana, no cada vez que una cámara vuelve al aire.
         _sourceCts?.Cancel();
         _sourceCts?.Dispose();
         _sourceCts = null;
@@ -1691,6 +1770,10 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     {
         _cycleTimer.Stop();
         _ndiPumpCts.Cancel();
+        _htmlCaptureCts?.Cancel();
+        _htmlCaptureCts?.Dispose();
+        _htmlCaptureCts = null;
+        _htmlCaptureView = null;
         await StopCurrentAsync();
         _srtOutput.Dispose();
         _rtmpOutput.Dispose();
