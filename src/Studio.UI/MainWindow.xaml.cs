@@ -189,7 +189,9 @@ public partial class MainWindow : Window
         _quadProgramActive = false;
         await StopCurrentAsync();
         UpdateAirCard();
-        SyncOverlayToggleButtons(_index >= 0 && _index < 5 ? _index : -1);
+        int selectedSlot;
+        lock (_overlayStateLock) selectedSlot = _index;
+        SyncOverlayToggleButtons(selectedSlot >= 0 && selectedSlot < 5 ? selectedSlot : -1);
         HideAllOverlays();
         lock (_overlayFrameLock)
         {
@@ -198,7 +200,7 @@ public partial class MainWindow : Window
             _newsFrame = null;
         }
 
-        if (_index == 4)
+        if (selectedSlot == 4)
         {
             StatusText.Text = "4 CÁMARAS • 1920×1080 • 29.97 FPS";
             await ShowQuadAsync();
@@ -207,7 +209,7 @@ public partial class MainWindow : Window
         }
 
         // Los HTML ocupan las posiciones 5 y 6 del ciclo, pero son las fuentes 4 y 5 del JSON.
-        var sourceIndex = _index >= 5 ? _index - 1 : _index;
+        var sourceIndex = selectedSlot >= 5 ? selectedSlot - 1 : selectedSlot;
         var source = _config.Sources[sourceIndex];
         StatusText.Text = source.Name + " • " + source.Type.ToUpperInvariant() + " • 1920×1080 • 29.97 FPS";
 
@@ -216,8 +218,8 @@ public partial class MainWindow : Window
         else
             await ShowRtspAsync(source.Url);
 
-        if (_index >= 0 && _index < 4)
-            ApplyActiveOverlays(_index);
+        if (selectedSlot >= 0 && selectedSlot < 4)
+            ApplyActiveOverlays(selectedSlot);
     }
 
     private async void SourceCard_Click(object sender, MouseButtonEventArgs e)
@@ -242,7 +244,9 @@ public partial class MainWindow : Window
                 System.Windows.Media.Color.FromRgb(48, 48, 48));
         }
 
-        var active = _index >= 0 && _index <= 6 ? _index : -1;
+        int currentIndex;
+        lock (_overlayStateLock) currentIndex = _index;
+        var active = currentIndex >= 0 && currentIndex <= 6 ? currentIndex : -1;
         if (active >= 0)
         {
             cards[active].Background = new System.Windows.Media.SolidColorBrush(
@@ -263,7 +267,9 @@ public partial class MainWindow : Window
         }
         else
         {
-            AirStatusText.Text = "AL AIRE: " + (_index == 5 ? "GRILLA" : _index == 6 ? "PLACA DE PROGRAMAS" : "—");
+            int currentIndex;
+            lock (_overlayStateLock) currentIndex = _index;
+            AirStatusText.Text = "AL AIRE: " + (currentIndex == 5 ? "GRILLA" : currentIndex == 6 ? "PLACA DE PROGRAMAS" : "—");
         }
     }
 
@@ -304,7 +310,7 @@ public partial class MainWindow : Window
     }
 
     private int GetActiveOverlaySlot() =>
-        _index >= 0 && _index <= 4 ? _index : -1;
+        GetOverlaySlotSnapshot();
 
     // Los botones son por fuente. Al cambiar de fuente, reflejar el estado real
     // guardado en los arrays para que el usuario no vea el botón apagado mientras
