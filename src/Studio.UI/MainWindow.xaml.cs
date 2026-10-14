@@ -53,6 +53,8 @@ public partial class MainWindow : Window
     private readonly List<Process> _quadProcesses = [];
     private LocalConfig? _config;
     private int _index = -1;
+    // Invalida fotogramas tardíos de productores pertenecientes a una fuente anterior.
+    private long _activeProgramGeneration;
     private bool _manualSelection;
     private volatile bool _quadProgramActive;
     private volatile bool _htmlProgramActive;
@@ -183,6 +185,7 @@ public partial class MainWindow : Window
         if (_config is null) return;
 
         Interlocked.Increment(ref _activeOverlayGeneration);
+        var programGeneration = Interlocked.Increment(ref _activeProgramGeneration);
         // Al cambiar de fuente, descartar inmediatamente cualquier captura HTML
         // en vuelo para no publicar un fotograma de la página anterior.
         _htmlProgramActive = false;
@@ -203,7 +206,7 @@ public partial class MainWindow : Window
         if (selectedSlot == 4)
         {
             StatusText.Text = "4 CÁMARAS • 1920×1080 • 29.97 FPS";
-            await ShowQuadAsync();
+            await ShowQuadAsync(programGeneration);
             // La grilla de cámaras es una vista limpia: no superponer los overlays del programa.
             return;
         }
@@ -216,7 +219,7 @@ public partial class MainWindow : Window
         if (source.Type.Equals("HTML", StringComparison.OrdinalIgnoreCase))
             await ShowHtmlAsync(source.Url);
         else
-            await ShowRtspAsync(source.Url);
+            await ShowRtspAsync(source.Url, programGeneration);
 
         if (selectedSlot >= 0 && selectedSlot < 4)
             ApplyActiveOverlays(selectedSlot);
@@ -597,7 +600,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         }
     }
 
-    private async Task ShowQuadAsync()
+    private async Task ShowQuadAsync(long programGeneration)
     {
         _quadProgramActive = true;
         _htmlProgramActive = false;
@@ -635,14 +638,14 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         _quadCts = new CancellationTokenSource();
         var token = _quadCts.Token;
 
-        var tasks = sources.Select((source, i) => ReadQuadCameraAsync(source, images[i], i, token)).ToArray();
+        var tasks = sources.Select((source, i) => ReadQuadCameraAsync(source, images[i], i, token, programGeneration)).ToArray();
         await Task.WhenAll(tasks);
 
         var active = images.Count(i => i.Visibility == Visibility.Visible);
         StatusText.Text = $"4 CÁMARAS • {active} ACTIVAS • 1920×1080 • 29.97 FPS";
     }
 
-    private async Task ReadQuadCameraAsync(Source source, System.Windows.Controls.Image target, int slot, CancellationToken token)
+    private async Task ReadQuadCameraAsync(Source source, System.Windows.Controls.Image target, int slot, CancellationToken token, long programGeneration)
     {
         var ffmpegPath = FindFfmpeg();
         if (ffmpegPath is null) return;
@@ -713,7 +716,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                     _quadNdiFrames[slot] = frame;
                     composed = ComposeQuadNdiFrame();
                 }
-                if (composed is not null) PublishProgramFrame(composed);
+                if (composed is not null) PublishProgramFrame(composed, programGeneration);
 
                 await Dispatcher.InvokeAsync(() =>
                 {
@@ -758,7 +761,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         return output;
     }
 
-    private async Task ShowRtspAsync(string url)
+    private async Task ShowRtspAsync(string url, long programGeneration)
     {
         _quadProgramActive = false;
         _htmlProgramActive = false;
@@ -803,7 +806,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             _ffmpeg = Process.Start(psi);
             if (_ffmpeg is null) { StatusText.Text = "NO SE PUDO INICIAR FFMPEG."; return; }
 
-            _ = Task.Run(() => ReadFramesAsync(_ffmpeg, token), token);
+            _ = Task.Run(() => ReadFramesAsync(_ffmpeg, token, programGeneration), token);
             _ = Task.Run(() => ReadFfmpegErrorsAsync(_ffmpeg, token), token);
         }
         catch (Exception ex)
@@ -813,7 +816,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         }
     }
 
-    private async Task ReadFramesAsync(Process process, CancellationToken token)
+    private async Task ReadFramesAsync(Process process, CancellationToken token, long programGeneration)
     {
         // FFmpeg entrega BGR0/BGRX: 4 bytes por pixel.
         const int bpp = 4;
@@ -836,7 +839,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
 
                 var frame = new byte[frameSize];
                 Buffer.BlockCopy(buffer, 0, frame, 0, frameSize);
-                PublishProgramFrame(frame);
+                PublishProgramFrame(frame, programGeneration);
                 // El preview se actualiza desde PreviewOutputPumpAsync con el
                 // mismo fotograma compuesto que reciben SRT, NDI y YouTube.
             }
@@ -987,6 +990,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             _manualSelection = true;
             _ndiInputOnAir = false;
             lock (_overlayStateLock) _index = -1;
+            Interlocked.Increment(ref _activeProgramGeneration);
 
             await StopCurrentAsync();
 
@@ -1064,7 +1068,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                     pixels is not null)
                 {
                     var outputFrame = NormalizeFrame(pixels, width, height, stride);
-                    WriteStreamFrame(outputFrame);
+                    WriteStreamFrame(outputFrame, Volatile.Read(ref _activeProgramGeneration));
 
                     if (firstFrame)
                     {
@@ -1185,13 +1189,16 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     private long _lastProgramFrameTimestamp;
     private int _activeOverlayGeneration;
 
-    private void PublishProgramFrame(byte[] frame)
+    private void PublishProgramFrame(byte[] frame, long programGeneration)
     {
         if (frame.Length < OutputWidth * OutputHeight * 4) return;
+        if (programGeneration != Volatile.Read(ref _activeProgramGeneration)) return;
 
         var composedFrame = ComposeProgramFrame(frame);
         lock (_programFrameLock)
         {
+            // Validación final: la fuente puede haber cambiado mientras se componía.
+            if (programGeneration != Volatile.Read(ref _activeProgramGeneration)) return;
             // Limita la distribución a 29.97 fps incluso si las fuentes generan
             // cuadros en paralelo. La composición se publica como unidad indivisible.
             var now = Stopwatch.GetTimestamp();
@@ -1458,14 +1465,16 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                     continue;
                 }
 
+                var programGeneration = Volatile.Read(ref _activeProgramGeneration);
                 var frame = await CaptureWebViewFrameAsync(view, true);
                 // Descartar el frame si cambió la fuente mientras WebView2 capturaba.
                 if (frame is not null &&
+                    programGeneration == Volatile.Read(ref _activeProgramGeneration) &&
                     _htmlProgramActive &&
                     ReferenceEquals(view, _htmlCaptureView) &&
                     !token.IsCancellationRequested)
                 {
-                    PublishProgramFrame(frame);
+                    PublishProgramFrame(frame, programGeneration);
                 }
 
                 // CapturePreviewAsync es costoso; mantenerlo cerca de 29.97 fps.
@@ -1528,7 +1537,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
     }
 
     // Adaptador para los lectores que aún usan el nombre anterior.
-    private void WriteStreamFrame(byte[] frame) => PublishProgramFrame(frame);
+    private void WriteStreamFrame(byte[] frame, long programGeneration) => PublishProgramFrame(frame, programGeneration);
 
     private void LoadOutputSettings()
     {
