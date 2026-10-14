@@ -163,7 +163,7 @@ public partial class MainWindow : Window
         if (_config is null) return;
 
         // Orden de aire: Puente → Puerto → Esquina → Edificio JJ → 4 Cámaras → Grilla → Placa de programas.
-        _index = (_index + 1) % 7;
+        lock (_overlayStateLock) _index = (_index + 1) % 7;
         await ShowCurrentAsync();
     }
 
@@ -174,7 +174,7 @@ public partial class MainWindow : Window
 
         // La selección manual cambia el plano actual, pero no desactiva el ciclo automático de 20 s.
         _manualSelection = false;
-        _index = slot;
+        lock (_overlayStateLock) _index = slot;
         await ShowCurrentAsync();
     }
 
@@ -962,7 +962,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             _cycleTimer.Stop();
             _manualSelection = true;
             _ndiInputOnAir = false;
-            _index = -1;
+            lock (_overlayStateLock) _index = -1;
 
             await StopCurrentAsync();
 
@@ -1013,7 +1013,7 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             NdiReturnButton.IsEnabled = false;
 
             _manualSelection = false;
-            _index = -1;
+            lock (_overlayStateLock) _index = -1;
 
             Log("NDI: retorno al programa automático.");
             await ShowNextAsync();
