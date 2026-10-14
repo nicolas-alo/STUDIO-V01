@@ -309,8 +309,12 @@ public partial class MainWindow : Window
             _ = ApplyActiveOverlaysAsync(slot);
     }
 
-    private int GetActiveOverlaySlot() =>
-        GetOverlaySlotSnapshot();
+    private int GetActiveOverlaySlot()
+    {
+        int slot;
+        lock (_overlayStateLock) slot = _index;
+        return slot >= 0 && slot <= 4 ? slot : -1;
+    }
 
     // Los botones son por fuente. Al cambiar de fuente, reflejar el estado real
     // guardado en los arrays para que el usuario no vea el botón apagado mientras
