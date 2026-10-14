@@ -530,9 +530,14 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         _quadProgramActive = false;
         _htmlProgramActive = false;
         HideAllOverlays();
-        PreviewImage.Visibility = Visibility.Collapsed;
+        // La única superficie visible del programa es PreviewImage, alimentada
+        // por el fotograma compuesto que también se distribuye a NDI/SRT/YouTube.
+        PreviewImage.Visibility = Visibility.Visible;
         QuadPreview.Visibility = Visibility.Collapsed;
         HtmlHost.Visibility = Visibility.Visible;
+        HtmlHost2.Visibility = Visibility.Visible;
+        HtmlHost.Opacity = 0;
+        HtmlHost2.Opacity = 0;
 
         try
         {
@@ -564,8 +569,10 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
             if (view.Source is null || !string.Equals(view.Source.AbsoluteUri, requestedUri.AbsoluteUri, StringComparison.OrdinalIgnoreCase))
                 view.Source = requestedUri;
 
-            HtmlHost.Opacity = view == _htmlPreview ? 1 : 0;
-            HtmlHost2.Opacity = view == _htmlPreview2 ? 1 : 0;
+            // Nunca mostrar el WebView vivo encima del preview: el HTML se
+            // captura y entra en la composición final publicada para todas las salidas.
+            HtmlHost.Opacity = 0;
+            HtmlHost2.Opacity = 0;
             HtmlHost.Visibility = Visibility.Visible;
             HtmlHost2.Visibility = Visibility.Visible;
             ResizeProgramPreview();
@@ -598,8 +605,12 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         // Mantener el HTML renderizando detrás de la grilla para que sus
         // animaciones sigan avanzando aunque la fuente no esté al aire.
         HtmlHost.Visibility = Visibility.Visible;
-        PreviewImage.Visibility = Visibility.Collapsed;
-        QuadPreview.Visibility = Visibility.Visible;
+        HtmlHost2.Visibility = Visibility.Visible;
+        HtmlHost.Opacity = 0;
+        HtmlHost2.Opacity = 0;
+        // La grilla se presenta únicamente dentro del frame compuesto común.
+        PreviewImage.Visibility = Visibility.Visible;
+        QuadPreview.Visibility = Visibility.Collapsed;
 
         var sources = _config?.Sources
             .Where(s => s.Type.Equals("RTSP", StringComparison.OrdinalIgnoreCase))
@@ -753,6 +764,9 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
         _htmlProgramActive = false;
         // Mantener el HTML renderizando detrás de la cámara.
         HtmlHost.Visibility = Visibility.Visible;
+        HtmlHost2.Visibility = Visibility.Visible;
+        HtmlHost.Opacity = 0;
+        HtmlHost2.Opacity = 0;
         QuadPreview.Visibility = Visibility.Collapsed;
         PreviewImage.Visibility = Visibility.Visible;
 
@@ -1236,8 +1250,16 @@ if(url){s.textContent='M3U8 conectado'; if(a.canPlayType('application/vnd.apple.
                     {
                         if (token.IsCancellationRequested) return;
                         // El preview presenta el mismo fotograma compuesto distribuido.
+                        // Preview = programa final. No permitir que WebView2 ni
+                        // el mosaico WPF dibujen una segunda composición por encima.
                         HtmlHost.Visibility = Visibility.Visible;
+                        HtmlHost2.Visibility = Visibility.Visible;
+                        HtmlHost.Opacity = 0;
+                        HtmlHost2.Opacity = 0;
                         QuadPreview.Visibility = Visibility.Collapsed;
+                        ClimateHost.Opacity = 0;
+                        LogoHost.Opacity = 0;
+                        NewsHost.Opacity = 0;
                         PreviewImage.Source = bitmap;
                         PreviewImage.Visibility = Visibility.Visible;
                     }, DispatcherPriority.Render);
