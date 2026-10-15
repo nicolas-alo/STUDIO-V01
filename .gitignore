@@ -5,7 +5,8 @@
 *.user
 *.suo
 
-# Local configuration
+# Local configuration may contain RTSP credentials
+config.local.json
 config/config.local.json
 
 # Local tools
