@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -76,7 +77,7 @@ public partial class MainWindow : Window
                 else continue;
 
                 if (!Uri.TryCreate(source.Url, UriKind.Absolute, out var uri) ||
-                    (kind == ProgramSourceKind.Rtsp && uri.Scheme != Uri.UriSchemeRtsp) ||
+                    (kind == ProgramSourceKind.Rtsp && !uri.Scheme.Equals("rtsp", StringComparison.OrdinalIgnoreCase)) ||
                     (kind == ProgramSourceKind.Html && uri.Scheme is not ("http" or "https")))
                     continue;
 
