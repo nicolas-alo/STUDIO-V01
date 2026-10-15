@@ -1,6 +1,14 @@
 # STUDIO V01 — Clean Rebuild
 
-This project is a clean implementation path. It does not use the legacy `MainWindow.xaml.cs` pipeline.
+This project is an isolated clean implementation path. It does not use the legacy video pipeline.
+
+## Local source configuration
+
+The application can load a JSON file using **ABRIR CONFIG.JSON**. It accepts a `Sources` array with `Name`, `Type` (`RTSP`, `HTML`, or reserved `NDI`) and `Url`. Property names are case-insensitive. Invalid entries are skipped and the UI reports how many valid sources were loaded.
+
+At startup it also looks for `config.local.json` beside the executable or in the current working directory (including a `config/` subfolder). This file is intentionally ignored by Git because RTSP URLs may contain usernames and passwords. Use `config.example.json` as a structure template and create your own local copy with real addresses and credentials.
+
+The configuration's `CycleSeconds` value is retained by the JSON schema for compatibility, but automatic cycling is not implemented or enabled.
 
 ## Architectural rule
 
@@ -10,28 +18,27 @@ The bus rejects frames from invalidated generations and out-of-order sequence nu
 
 ## Current state
 
-Implemented in this initial foundation:
+Implemented:
 - Separate WPF project and operator UI, isolated from the old entry point.
-- Source/overlay/output state model.
 - Shared program-frame contract and thread-safe latest-frame bus.
-- Source generation invalidation and stale-frame rejection.
-- UI controls for RTSP address, NDI placeholder, 2×2 quad selection, HTML address, overlay toggles, and output toggles.
+- JSON source configuration loader, source list and selection for RTSP/HTML/reserved NDI.
+- Local configuration files excluded from version control.
 
-Not implemented yet and therefore **not operational**:
+Still not operational:
 - RTSP decoding and camera discovery.
 - NDI source discovery, receiver, and sender integration.
 - Four-input quad compositor.
 - Persistent animated WebView2 HTML capture.
-- Actual overlay rendering into the program pixels.
+- Actual overlay rendering into program pixels.
 - FFmpeg SRT/YouTube output and audio capture.
 - Automated end-to-end frame parity tests and Windows hardware validation.
 
 ## Build
 
-From a Windows machine with .NET 8 SDK:
+On Windows with .NET 8 SDK:
 
 ```powershell
 dotnet build src/Studio.Rebuilt/Studio.Rebuilt.csproj -c Release
 ```
 
-The old project remains untouched while this new implementation is developed. Do not distribute this scaffold as a finished production build.
+Do not distribute this scaffold as a finished production build.
